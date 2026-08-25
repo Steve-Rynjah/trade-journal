@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
+import type { ReactNode } from "react";
 
-import { AppShell } from "./components/shell/app-shell";
-import { loadTrades } from "@/lib/page-data";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -32,19 +31,20 @@ try {
 } catch (e) {}
 `;
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
-  // Read here rather than in each page: the layout is preserved across
-  // navigation, so moving between the tabs costs no server round trip.
-  const result = await loadTrades();
-
+/**
+ * Document shell only.
+ *
+ * The sidebar, the header and the journal read all live one level down, in the
+ * `(app)` group — so the login page can share the fonts and the theme without
+ * inheriting a chrome it has no business rendering.
+ */
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${outfit.variable} h-full`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body className="min-h-full font-outfit">
-        <AppShell result={result}>{children}</AppShell>
-      </body>
+      <body className="min-h-full font-outfit">{children}</body>
     </html>
   );
 }

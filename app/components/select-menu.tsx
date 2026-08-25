@@ -15,6 +15,8 @@ export function SelectMenu<T extends string | number | null>({
   onChange,
   icon,
   widthClass = "w-56",
+  placement = "down",
+  align = "left",
 }: {
   label: string;
   value: T;
@@ -22,6 +24,13 @@ export function SelectMenu<T extends string | number | null>({
   onChange: (next: T) => void;
   icon?: ReactNode;
   widthClass?: string;
+  /** Up for a menu near the foot of the page, where down would run off it. */
+  placement?: "down" | "up";
+  /**
+   * Which edge the list hangs from. A button sitting at the right of its card
+   * needs `right`, or a list wider than the button spills past the card edge.
+   */
+  align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -80,7 +89,9 @@ export function SelectMenu<T extends string | number | null>({
         <ul
           role="listbox"
           aria-label={label}
-          className={`animate-rise absolute left-0 z-40 mt-2 max-h-72 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-2 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark ${widthClass}`}
+          className={`animate-rise absolute z-40 max-h-72 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-2 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark ${
+            align === "right" ? "right-0" : "left-0"
+          } ${placement === "up" ? "bottom-full mb-2" : "mt-2"} ${widthClass}`}
         >
           {options.map((option) => {
             const active = option.value === value;

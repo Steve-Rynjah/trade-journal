@@ -24,9 +24,11 @@ type Side = {
 export function LongShortCard({
   trades,
   accountSize,
+  riskPercent,
 }: {
   trades: Trade[];
   accountSize: number;
+  riskPercent: number;
 }) {
   const longTrades = trades.filter((trade) => trade.direction === "LONG");
   const shortTrades = trades.filter((trade) => trade.direction === "SHORT");
@@ -37,7 +39,7 @@ export function LongShortCard({
       label: "Long",
       color: LONG,
       split: splitByDirection(trades, "LONG"),
-      pnl: computePnl(longTrades, accountSize).net,
+      pnl: computePnl(longTrades, accountSize, riskPercent).net,
       // With nothing logged the bar splits evenly rather than collapsing.
       share: total === 0 ? 50 : (longTrades.length / total) * 100,
     },
@@ -45,7 +47,7 @@ export function LongShortCard({
       label: "Short",
       color: SHORT,
       split: splitByDirection(trades, "SHORT"),
-      pnl: computePnl(shortTrades, accountSize).net,
+      pnl: computePnl(shortTrades, accountSize, riskPercent).net,
       share: total === 0 ? 50 : (shortTrades.length / total) * 100,
     },
   ];
@@ -79,7 +81,7 @@ export function LongShortCard({
         {sides.map((side) => (
           <span
             key={side.label}
-            className="h-full transition-[width] duration-500"
+            className="animate-grow-x h-full transition-[width] duration-500"
             style={{ width: `${side.share}%`, background: side.color }}
           />
         ))}

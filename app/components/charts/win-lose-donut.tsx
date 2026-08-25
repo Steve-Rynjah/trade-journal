@@ -40,7 +40,20 @@ function arcPath(start: number, end: number): string {
  * Long vs Short bar. The legend still spells out each word beside its count, so
  * identity never rests on hue alone.
  */
-export function WinLoseDonut({ split }: { split: ResultSplit }) {
+export function WinLoseDonut({
+  split,
+  size = 240,
+  legend = true,
+  precision = 0,
+}: {
+  split: ResultSplit;
+  /** Rendered width in px. The geometry is a viewBox, so it just scales. */
+  size?: number;
+  /** Off when the card around it already names the two colours. */
+  legend?: boolean;
+  /** Decimal places on the centre figure. */
+  precision?: number;
+}) {
   const [hovered, setHovered] = useState<string | null>(null);
 
   const slices: Slice[] = [
@@ -52,11 +65,16 @@ export function WinLoseDonut({ split }: { split: ResultSplit }) {
 
   if (total === 0) {
     return (
-      <div className="flex flex-col items-center gap-4 py-10">
-        <div className="h-40 w-40 rounded-full border-[30px] border-gray-100 dark:border-gray-800" />
-        <p className="text-theme-sm text-gray-500 dark:text-gray-400">
-          No trades logged yet.
-        </p>
+      <div className="flex flex-col items-center gap-4 py-6">
+        <div
+          className="rounded-full border-gray-100 dark:border-gray-800"
+          style={{ width: size * 0.66, height: size * 0.66, borderWidth: size * 0.125 }}
+        />
+        {legend ? (
+          <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+            No trades logged yet.
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -84,15 +102,16 @@ export function WinLoseDonut({ split }: { split: ResultSplit }) {
 
   const active = hovered ? arcs.find((arc) => arc.slice.key === hovered) : undefined;
   const heroValue = active
-    ? `${Math.round(active.share * 100)}%`
-    : `${split.winRate.toFixed(0)}%`;
+    ? `${(active.share * 100).toFixed(precision)}%`
+    : `${split.winRate.toFixed(precision)}%`;
 
   return (
     <div className="flex flex-col items-center">
       <div className="relative">
         <svg
           viewBox={`0 0 ${SIZE} ${SIZE}`}
-          className="animate-draw-in h-[240px] w-[240px]"
+          className="animate-draw-in"
+          style={{ width: size, height: size }}
           role="img"
           aria-label={`Result split of ${total} trades: ${arcs
             .map(
@@ -135,12 +154,17 @@ export function WinLoseDonut({ split }: { split: ResultSplit }) {
         </svg>
 
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="tnum text-title-sm font-bold text-gray-800 dark:text-white/90">
+          <span
+            className={`tnum font-bold text-gray-800 dark:text-white/90 ${
+              size >= 200 ? "text-title-sm" : "text-theme-xl"
+            }`}
+          >
             {heroValue}
           </span>
         </div>
       </div>
 
+      {legend ? (
       <ul className="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
         {slices.map((slice) => {
           const share = total === 0 ? 0 : (slice.value / total) * 100;
@@ -166,6 +190,7 @@ export function WinLoseDonut({ split }: { split: ResultSplit }) {
           );
         })}
       </ul>
+      ) : null}
     </div>
   );
 }

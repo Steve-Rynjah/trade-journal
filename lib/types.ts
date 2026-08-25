@@ -14,6 +14,13 @@ export type Trade = {
   id: string;
   /** ISO `YYYY-MM-DD`. Always a weekday. */
   tradeDate: string;
+  /**
+   * Which sheet of the month this trade belongs to.
+   *
+   * A month can be backtested more than once; each run is its own sheet, so
+   * `August 2026 v2` is a separate 25-row page from `August 2026 v1`.
+   */
+  version: number;
   bias: Bias;
   direction: Direction;
   /** Free text, exactly as typed: `1 : 2`, `1 : 1.5`, anything. */
@@ -31,6 +38,7 @@ export type TradeWithScreenshot = Trade & { screenshotUrl: string | null };
 export type TradeRow = {
   id: string;
   trade_date: string;
+  version: number;
   bias: Bias;
   direction: Direction;
   ratio: string | null;
@@ -44,6 +52,7 @@ export function rowToTrade(row: TradeRow): Trade {
   return {
     id: row.id,
     tradeDate: row.trade_date,
+    version: row.version,
     bias: row.bias,
     direction: row.direction,
     ratio: row.ratio ?? DEFAULT_RATIO,
@@ -111,6 +120,90 @@ export function withWeekday(isoDate: string, day: Weekday): string {
   const target = WEEKDAYS.indexOf(day) + 1;
   date.setUTCDate(date.getUTCDate() + (target - date.getUTCDay()));
   return date.toISOString().slice(0, 10);
+}
+
+/* ---------------------------------------------------------------------------
+   Months
+   A sheet *is* a month, so every date the sheet accepts has to fall inside it.
+   These are what keep the two from drifting apart.
+   --------------------------------------------------------------------------- */
+
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** First and last day of a month, as the ISO strings a date input wants. */
+export function monthBounds(month: number, year: number): {
+  start: string;
+  end: string;
+} {
+  // Day 0 of the next month is the last day of this one.
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    start: `${year}-${pad(month)}-01`,
+    end: `${year}-${pad(month)}-${pad(last)}`,
+  };
+}
+
+export function isInMonth(isoDate: string, month: number, year: number): boolean {
+  return isValidDate(isoDate) && isoDate.slice(0, 7) === `${year}-${pad(month)}`;
+}
+
+function iso(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function step(isoDate: string, days: number): string {
+  const cursor = new Date(`${isoDate}T00:00:00Z`);
+  cursor.setUTCDate(cursor.getUTCDate() + days);
+  return iso(cursor);
+}
+
+/**
+ * The date an untouched row shows: a weekday inside the given month — today
+ * when that month is this one, otherwise the last weekday of it.
+ *
+ * Guaranteed to be in month, both ways. Walking back from the last day can only
+ * land earlier, and walking forward from the 1st covers a month that opens on a
+ * weekend, where walking back would leave for the month before.
+ */
+export function defaultDateInMonth(month: number, year: number): string {
+  const { start, end } = monthBounds(month, year);
+  const today = iso(new Date());
+
+  let cursor = today >= start && today <= end ? today : end;
+  while (cursor >= start && !isWeekday(cursor)) cursor = step(cursor, -1);
+  if (cursor >= start) return cursor;
+
+  cursor = start;
+  while (cursor <= end && !isWeekday(cursor)) cursor = step(cursor, 1);
+  return cursor;
+}
+
+/**
+ * Pick a weekday without leaving the month.
+ *
+ * `withWeekday` alone stays inside the *week*, which is not the same thing: the
+ * week holding 31 August also holds 4 September, so choosing "Friday" from the
+ * last row of the month would quietly file the trade under the next one. When
+ * the shift lands outside, step back a week — the same weekday, still in month.
+ */
+export function withWeekdayInMonth(
+  isoDate: string,
+  day: Weekday,
+  month: number,
+  year: number,
+): string {
+  const shifted = withWeekday(isoDate, day);
+  if (isInMonth(shifted, month, year)) return shifted;
+
+  const date = new Date(`${shifted}T00:00:00Z`);
+  const { start } = monthBounds(month, year);
+  // One week either way is always enough: the miss is at most a few days.
+  date.setUTCDate(date.getUTCDate() + (shifted < start ? 7 : -7));
+
+  const nudged = date.toISOString().slice(0, 10);
+  return isInMonth(nudged, month, year) ? nudged : shifted;
 }
 
 /* ---------------------------------------------------------------------------

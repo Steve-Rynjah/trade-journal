@@ -4,36 +4,25 @@ import { useMemo, useState, useTransition } from "react";
 
 import { createTrade } from "@/app/actions";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
-import { filterTrades } from "@/lib/stats";
-import { composeRatio, isWeekday, isValidDate } from "@/lib/types";
+import {
+  DEFAULT_PAGE_SIZE,
+  MAX_TRADES_PER_SHEET,
+  MONTHS,
+  filterSheet,
+  sheetCapacity,
+} from "@/lib/stats";
+import {
+  composeRatio,
+  defaultDateInMonth,
+  isInMonth,
+  isWeekday,
+  isValidDate,
+} from "@/lib/types";
+import { Pagination } from "../pagination";
 import { PeriodFilter } from "../period-filter";
-import { useTrades, usePeriod } from "../shell/app-data";
+import { useTrades, useSheet } from "../shell/app-data";
 import { Card } from "../ui";
 import { TradeSheet, type Draft } from "./trade-sheet";
-
-function iso(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-/** Today, or the most recent weekday if the market is shut. */
-function lastWeekdayOnOrBefore(date: Date): string {
-  const cursor = new Date(date);
-  while (!isWeekday(iso(cursor))) cursor.setUTCDate(cursor.getUTCDate() - 1);
-  return iso(cursor);
-}
-
-/**
- * Seeds the open row with a date inside the month and year on screen, so a trade
- * typed while looking at January cannot silently land in August.
- */
-function defaultDateFor(month: number, year: number): string {
-  const today = new Date();
-  if (month === today.getUTCMonth() + 1 && year === today.getUTCFullYear()) {
-    return lastWeekdayOnOrBefore(today);
-  }
-  // Day 0 of the next month is the last day of this one.
-  return lastWeekdayOnOrBefore(new Date(Date.UTC(year, month, 0)));
-}
 
 /** A fresh row starts empty — nothing is pre-picked but the printed risk leg. */
 function blankDraft(): Draft {
@@ -50,28 +39,48 @@ function blankDraft(): Draft {
 
 export function Journal() {
   const trades = useTrades();
-  const { month, year } = usePeriod();
+  const { month, year, version, label } = useSheet();
 
   const [draft, setDraft] = useState<Draft>(blankDraft);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [requestedPage, setRequestedPage] = useState(1);
 
   // Newest first, so the trade you just logged is the one you are looking at.
   const rows = useMemo(
     () =>
-      [...filterTrades(trades, month, year)].sort(
+      [...filterSheet(trades, month, year, version)].sort(
         (a, b) =>
           b.tradeDate.localeCompare(a.tradeDate) ||
           b.createdAt.localeCompare(a.createdAt),
       ),
-    [trades, month, year],
+    [trades, month, year, version],
   );
+
+  const capacity = sheetCapacity(rows.length);
+
+  /* -------------------------------------------------------------------------
+     Paging
+     Both values are derived rather than synced: changing the sheet or shrinking
+     the page size can strand you past the last page, and clamping at the point
+     of reading fixes that without an effect writing state back on render.
+     ------------------------------------------------------------------------- */
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const visible = rows.slice((page - 1) * pageSize, page * pageSize);
+
+  const fallbackDate = defaultDateInMonth(month, year);
+  const tradeDate = draft.tradeDate || fallbackDate;
 
   function saveDraft() {
     setError(null);
     startTransition(async () => {
       const data = new FormData();
-      data.set("trade_date", draft.tradeDate);
+      // What the row shows is what it saves — an untouched Date cell already
+      // reads as a date in this month, and that is the one that is meant.
+      data.set("trade_date", tradeDate);
+      data.set("version", String(version));
       data.set("bias", draft.bias);
       data.set("direction", draft.direction);
       data.set("ratio", composeRatio("1", draft.reward));
@@ -82,6 +91,9 @@ export function Journal() {
       const result = await createTrade(EMPTY_FORM_STATE, data);
       if (result.status === "success") {
         setDraft(blankDraft());
+        // Rows read newest first, so the trade just saved is at the top of the
+        // first page — which is no use if you are looking at the third.
+        setRequestedPage(1);
       } else {
         // Name the cells that are wrong: "check the highlighted fields" means
         // nothing when the row itself has no highlighting.
@@ -91,8 +103,19 @@ export function Journal() {
     });
   }
 
-  const dateOk = isValidDate(draft.tradeDate) && isWeekday(draft.tradeDate);
-  const fallbackDate = defaultDateFor(month, year);
+  // Why Save is off, in the order the journal would hit them.
+  //
+  // The month check is the important one: a date outside the sheet used to save
+  // happily and then vanish, because the table only ever shows its own month.
+  const blocked = capacity.full
+    ? `${label} is full — ${MAX_TRADES_PER_SHEET} trades. Open the next sheet.`
+    : !isValidDate(tradeDate)
+      ? "Pick a date."
+      : !isInMonth(tradeDate, month, year)
+        ? `That date is outside ${MONTHS[month - 1]} ${year} — this sheet only holds that month.`
+        : !isWeekday(tradeDate)
+          ? "Forex week runs Monday to Friday"
+          : null;
 
   return (
     <div className="mx-auto w-full max-w-[100rem]">
@@ -101,8 +124,8 @@ export function Journal() {
           <button
             type="button"
             onClick={saveDraft}
-            disabled={pending || !dateOk}
-            title={dateOk ? "Save the open row" : "Forex week runs Monday to Friday"}
+            disabled={pending || blocked !== null}
+            title={blocked ?? "Save the open row"}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs transition-colors hover:bg-brand-600 disabled:pointer-events-none disabled:opacity-50"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -119,13 +142,32 @@ export function Journal() {
         }
         trailing={
           <p className="tnum text-theme-sm text-gray-500 dark:text-gray-400">
-            <span className="font-semibold text-gray-800 dark:text-white/90">
-              {rows.length}
+            <span
+              className={
+                capacity.full
+                  ? "font-semibold text-error-600 dark:text-error-400"
+                  : "font-semibold text-gray-800 dark:text-white/90"
+              }
+            >
+              {capacity.used} / {capacity.limit}
             </span>{" "}
-            {rows.length === 1 ? "trade" : "trades"}
+            on {label}
           </p>
         }
       />
+
+      {blocked && !capacity.full && !error ? (
+        <p className="mb-3 rounded-lg bg-warning-50 px-4 py-2.5 text-theme-sm text-warning-700 dark:bg-warning-500/12 dark:text-warning-500">
+          {blocked}
+        </p>
+      ) : null}
+
+      {capacity.full && !error ? (
+        <p className="mb-3 rounded-lg bg-warning-50 px-4 py-2.5 text-theme-sm text-warning-700 dark:bg-warning-500/12 dark:text-warning-500">
+          {label} is full at {MAX_TRADES_PER_SHEET} trades. Pick the next version
+          sheet to keep backtesting this month.
+        </p>
+      ) : null}
 
       {error ? (
         <p
@@ -136,16 +178,38 @@ export function Journal() {
         </p>
       ) : null}
 
-      <Card className="overflow-hidden">
+      {/* No `overflow-hidden` here: the Rows menu in the footer opens upward and
+          a clipping card cuts it off on a short sheet. The table clips its own
+          corners instead — see the scroll wrapper in TradeSheet. */}
+      <Card>
         <TradeSheet
-          trades={rows}
+          trades={visible}
           draft={draft}
           onDraftChange={setDraft}
           onSaveDraft={saveDraft}
           pending={pending}
           onError={setError}
           fallbackDate={fallbackDate}
+          version={version}
+          month={month}
+          year={year}
         />
+
+        {rows.length > 0 ? (
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            total={rows.length}
+            onPage={setRequestedPage}
+            onPageSize={(size) => {
+              setPageSize(size);
+              // Row 7 is on page 2 at six a page and page 1 at ten; rather than
+              // guess which one you meant, start again from the top.
+              setRequestedPage(1);
+            }}
+          />
+        ) : null}
       </Card>
     </div>
   );

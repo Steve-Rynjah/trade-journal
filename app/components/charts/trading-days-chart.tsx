@@ -35,7 +35,7 @@ export function TradingDaysChart({ rows }: { rows: WeekdayDays[] }) {
               <span className="relative h-6 flex-1 rounded-md bg-gray-100 dark:bg-white/[0.04]">
                 {row.net !== 0 ? (
                   <span
-                    className={`absolute inset-y-0 left-0 rounded-r-md transition-[width] duration-500 ${
+                    className={`animate-grow-x absolute inset-y-0 left-0 rounded-r-md transition-[width] duration-500 ${
                       up ? "bg-brand-500" : "bg-error-500"
                     }`}
                     style={{ width: `${(Math.abs(row.net) / max) * 100}%` }}

@@ -59,7 +59,7 @@ export async function loadTrades(): Promise<LoadResult> {
         message,
         steps: [
           "Open the SQL Editor for this project",
-          "Run supabase/migrations/0001_init.sql, then 0002_ratio_text_and_no_breakeven.sql",
+          "Run the files in supabase/migrations in order, 0001 through 0004",
           "Reload this page",
         ],
         action: editor ? { href: editor, label: "Open the SQL Editor" } : undefined,

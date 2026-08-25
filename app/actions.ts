@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 
+import { currentUser, type SessionUser } from "@/lib/auth";
 import type { FormState } from "@/lib/form-state";
 import { createClient } from "@/lib/supabase/server";
 import { SCREENSHOT_BUCKET } from "@/lib/supabase/config";
+import { MAX_SHEET_VERSIONS, FIRST_VERSION } from "@/lib/stats";
 import {
   BIASES,
   DIRECTIONS,
@@ -22,6 +24,8 @@ const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/avif"];
 
 type ParsedTrade = {
   trade_date: string;
+  /** Which sheet of the month the row lands on. */
+  version: number;
   bias: Bias;
   direction: Direction;
   /** Free text — the journal records it, nothing computes on it. */
@@ -37,6 +41,7 @@ function parseTrade(formData: FormData): {
   const fieldErrors: Record<string, string> = {};
 
   const tradeDate = String(formData.get("trade_date") ?? "").trim();
+  const version = Number(formData.get("version") ?? FIRST_VERSION);
   const bias = String(formData.get("bias") ?? "");
   const direction = String(formData.get("direction") ?? "");
   const result = String(formData.get("result") ?? "");
@@ -57,6 +62,10 @@ function parseTrade(formData: FormData): {
     fieldErrors.result = "Choose a result.";
   }
 
+  if (!Number.isInteger(version) || version < FIRST_VERSION || version > MAX_SHEET_VERSIONS) {
+    fieldErrors.version = "Pick a sheet.";
+  }
+
   if (ratio === "") {
     fieldErrors.ratio = "Enter the ratio.";
   } else if (ratio.length > MAX_RATIO_LENGTH) {
@@ -68,6 +77,7 @@ function parseTrade(formData: FormData): {
   return {
     values: {
       trade_date: tradeDate,
+      version,
       bias: bias as Bias,
       direction: direction as Direction,
       ratio,
@@ -99,6 +109,38 @@ function extensionFor(file: File): string {
   return file.type.split("/")[1] ?? "png";
 }
 
+/**
+ * Objects live under `<user_id>/<uuid>.<ext>`. The first segment is what the
+ * storage policies read the owner off, so the folder is not decoration — put a
+ * file anywhere else and the upload is rejected.
+ */
+function screenshotPathFor(user: SessionUser, file: File): string {
+  return `${user.id}/${crypto.randomUUID()}.${extensionFor(file)}`;
+}
+
+/**
+ * What every action answers with when nobody is signed in.
+ *
+ * The proxy turns signed-out visitors away at the door, but a Server Action is
+ * a POST to whatever route used it — one matcher edit and it is no longer
+ * covered. So each action checks for itself rather than trusting the door.
+ */
+const SIGNED_OUT: FormState = {
+  status: "error",
+  message: "Your session has expired. Sign in again.",
+};
+
+/**
+ * The sheet limit is a database trigger, so its message arrives already written
+ * for a person. Anything else gets the usual prefix.
+ */
+function saveError(prefix: string, message: string): FormState {
+  return {
+    status: "error",
+    message: message.startsWith("Sheet v") ? message : `${prefix}: ${message}`,
+  };
+}
+
 export async function createTrade(
   _prev: FormState,
   formData: FormData,
@@ -122,12 +164,15 @@ export async function createTrade(
     };
   }
 
+  const user = await currentUser();
+  if (!user) return SIGNED_OUT;
+
   try {
     const supabase = await createClient();
     let screenshotPath: string | null = null;
 
     if (file) {
-      const path = `${crypto.randomUUID()}.${extensionFor(file)}`;
+      const path = screenshotPathFor(user, file);
       const { error } = await supabase.storage
         .from(SCREENSHOT_BUCKET)
         .upload(path, file, { contentType: file.type, upsert: false });
@@ -138,16 +183,19 @@ export async function createTrade(
       screenshotPath = path;
     }
 
+    // `user_id` is stated rather than left to the column default: the RLS check
+    // compares it to auth.uid(), and a row that names its owner is one less
+    // thing depending on a default staying in place.
     const { error } = await supabase
       .from("trades")
-      .insert({ ...values, screenshot_path: screenshotPath });
+      .insert({ ...values, user_id: user.id, screenshot_path: screenshotPath });
 
     if (error) {
       // Don't leave the uploaded file behind if the row never landed.
       if (screenshotPath) {
         await supabase.storage.from(SCREENSHOT_BUCKET).remove([screenshotPath]);
       }
-      return { status: "error", message: `Could not save trade: ${error.message}` };
+      return saveError("Could not save trade", error.message);
     }
 
     revalidatePath("/", "layout");
@@ -185,6 +233,9 @@ export async function updateTrade(
     };
   }
 
+  const user = await currentUser();
+  if (!user) return SIGNED_OUT;
+
   try {
     const supabase = await createClient();
 
@@ -202,7 +253,7 @@ export async function updateTrade(
     let screenshotPath = previousPath;
 
     if (file) {
-      const path = `${crypto.randomUUID()}.${extensionFor(file)}`;
+      const path = screenshotPathFor(user, file);
       const { error } = await supabase.storage
         .from(SCREENSHOT_BUCKET)
         .upload(path, file, { contentType: file.type, upsert: false });
@@ -226,7 +277,7 @@ export async function updateTrade(
       if (file && screenshotPath && screenshotPath !== previousPath) {
         await supabase.storage.from(SCREENSHOT_BUCKET).remove([screenshotPath]);
       }
-      return { status: "error", message: `Could not update trade: ${error.message}` };
+      return saveError("Could not update trade", error.message);
     }
 
     // Only now is the old file genuinely orphaned.
@@ -246,6 +297,9 @@ export async function updateTrade(
 
 export async function deleteTrade(id: string): Promise<FormState> {
   if (!id) return { status: "error", message: "Missing trade id." };
+
+  const user = await currentUser();
+  if (!user) return SIGNED_OUT;
 
   try {
     const supabase = await createClient();
@@ -291,6 +345,9 @@ export async function setScreenshot(formData: FormData): Promise<FormState> {
   if (fileError) return { status: "error", message: fileError };
   if (!file) return { status: "error", message: "No image was selected." };
 
+  const user = await currentUser();
+  if (!user) return SIGNED_OUT;
+
   try {
     const supabase = await createClient();
 
@@ -307,7 +364,7 @@ export async function setScreenshot(formData: FormData): Promise<FormState> {
       return { status: "error", message: "Charts are only kept for losing trades." };
     }
 
-    const path = `${crypto.randomUUID()}.${extensionFor(file)}`;
+    const path = screenshotPathFor(user, file);
     const { error: uploadError } = await supabase.storage
       .from(SCREENSHOT_BUCKET)
       .upload(path, file, { contentType: file.type, upsert: false });

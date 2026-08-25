@@ -6,11 +6,11 @@ import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_KEY, SUPABASE_URL, isSupabaseConfigured } from "./config";
 
 /**
- * Server-side Supabase client.
+ * Server-side Supabase client, carrying the signed-in session.
  *
- * The journal ships without a login, so there is no session to read today. The
- * cookie plumbing is here anyway because it is what makes adding auth later a
- * one-file change rather than a rewrite.
+ * Every read and write goes out as the logged-in user, which is what the RLS
+ * policies scope on — so this client sees one person's trades and no one
+ * else's, without a single `where user_id =` in the app.
  */
 export async function createClient() {
   if (!isSupabaseConfigured) {

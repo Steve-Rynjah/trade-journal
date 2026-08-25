@@ -179,7 +179,7 @@ body {
 @keyframes draw-in {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.86) rotate(-16deg);
   }
   to {
     opacity: 1;
@@ -188,10 +188,64 @@ body {
 }
 
 /* Charts are always drawn at full geometry; only this transform animates, so a
-   stalled animation can never leave a blank chart. */
+   stalled animation can never leave a blank chart. The donut turns into place
+   rather than sweeping its arcs, for the same reason. */
 @utility animate-draw-in {
   transform-origin: center;
-  animation: draw-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: draw-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---------------------------------------------------------------------------
+   Bars
+   Grown from the left rather than faded in, so a bar chart reads as filling.
+   `both` plus the reduced-motion override above means the end state is reached
+   even when the animation never actually runs.
+   --------------------------------------------------------------------------- */
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@utility animate-grow-x {
+  transform-origin: left center;
+  animation: grow-x 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---------------------------------------------------------------------------
+   Theme change
+   The toggle wipes the new theme over the old one from the button that was
+   pressed, using the View Transitions API. Browsers without it — and anyone
+   who asked for reduced motion — get the instant swap instead; see
+   components/shell/theme-toggle.tsx.
+   --------------------------------------------------------------------------- */
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0% at var(--theme-x, 50%) var(--theme-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--theme-r, 150%) at var(--theme-x, 50%) var(--theme-y, 50%));
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* The outgoing theme stays put and the incoming one is revealed over it — a
+   cross-fade of two full-page snapshots would just look like a flash. */
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+  animation: theme-reveal 0.55s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ---------------------------------------------------------------------------

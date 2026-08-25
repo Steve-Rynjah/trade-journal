@@ -34,7 +34,7 @@ export function TradeCalendar({
           </div>
         ))}
 
-        {cells.map((cell) => {
+        {cells.map((cell, index) => {
           const wins = cell.trades.filter((trade) => trade.result === "WIN").length;
           const losses = cell.trades.length - wins;
 
@@ -64,12 +64,16 @@ export function TradeCalendar({
             <div
               key={cell.iso}
               title={hoverLabel || undefined}
+              // A week at a time rather than a cell at a time: 42 separate
+              // delays would take most of a second to finish, and the grid
+              // reads as rows anyway.
+              style={{ animationDelay: `${Math.floor(index / 7) * 55}ms` }}
               aria-label={
                 cell.trades.length === 0
                   ? `${formatTradeDate(cell.iso)} — no trades`
                   : `${formatTradeDate(cell.iso)} — ${wins} won, ${losses} lost`
               }
-              className={`flex min-h-16 flex-col rounded-xl p-2 transition-colors sm:min-h-20 ${tint}`}
+              className={`animate-rise flex min-h-16 flex-col rounded-xl p-2 transition-colors sm:min-h-20 ${tint}`}
             >
               <span className="tnum text-theme-sm font-medium leading-none">
                 {cell.dayOfMonth}

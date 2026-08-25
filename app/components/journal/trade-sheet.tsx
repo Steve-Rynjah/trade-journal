@@ -15,7 +15,8 @@ import {
   isValidDate,
   parseRatio,
   sanitiseRatioLeg,
-  withWeekday,
+  monthBounds,
+  withWeekdayInMonth,
   type Bias,
   type Direction,
   type TradeResult,
@@ -170,15 +171,25 @@ function DraftCells({
   onSubmit,
   onPickFile,
   fallbackDate,
+  month,
+  year,
+  bounds,
 }: {
   draft: Draft;
   onChange: (next: Draft) => void;
   onSubmit: () => void;
   onPickFile: () => void;
-  /** The week a Day pick lands in while the row still has no date. */
+  /** Shown until the row is typed into — always a date inside the sheet. */
   fallbackDate: string;
+  /** The sheet's month. Every date this row can produce falls inside it. */
+  month: number;
+  year: number;
+  bounds: { start: string; end: string };
 }) {
-  const dayValid = isValidDate(draft.tradeDate);
+  // An untouched row already reads as a date in this month, so "fill it in and
+  // save" cannot quietly file the trade under a month you were not looking at.
+  const shownDate = draft.tradeDate || fallbackDate;
+  const dayValid = isValidDate(shownDate);
 
   function onKeyDown(event: React.KeyboardEvent) {
     if (event.key === "Enter") {
@@ -192,12 +203,12 @@ function DraftCells({
       <td className={`${TD} cell-rule`} onKeyDown={onKeyDown}>
         <SelectCell
           label="Day"
-          value={(dayValid ? dayNameOf(draft.tradeDate) : "") as Weekday | ""}
+          value={(dayValid ? dayNameOf(shownDate) : "") as Weekday | ""}
           options={WEEKDAYS}
           onChange={(day) =>
             onChange({
               ...draft,
-              tradeDate: withWeekday(draft.tradeDate || fallbackDate, day),
+              tradeDate: withWeekdayInMonth(shownDate, day, month, year),
             })
           }
           minWidth="min-w-[9rem]"
@@ -215,10 +226,15 @@ function DraftCells({
         />
       </td>
       <td className={`${TD} cell-rule`} onKeyDown={onKeyDown}>
+        {/* min/max keep the native picker on this month and refuse anything
+            outside it — the Date cell is the one place the row could otherwise
+            disagree with the sheet it is being typed into. */}
         <input
           type="date"
           aria-label="Date"
-          value={draft.tradeDate}
+          value={shownDate}
+          min={bounds.start}
+          max={bounds.end}
           onChange={(event) => onChange({ ...draft, tradeDate: event.target.value })}
           className={`${fieldClass} tnum h-9`}
         />
@@ -302,6 +318,9 @@ export function TradeSheet({
   pending,
   onError,
   fallbackDate,
+  version,
+  month,
+  year,
 }: {
   trades: TradeWithScreenshot[];
   draft: Draft;
@@ -309,9 +328,17 @@ export function TradeSheet({
   onSaveDraft: () => void;
   pending: boolean;
   onError: (message: string | null) => void;
-  /** A date inside the month on screen, for a Day pick on an empty row. */
+  /** A date inside the month on screen, shown until the row is typed into. */
   fallbackDate: string;
+  /**
+   * The sheet these rows came from. Every row on screen already belongs to it,
+   * so an edit re-states it rather than letting the update drop the column.
+   */
+  version: number;
+  month: number;
+  year: number;
 }) {
+  const bounds = monthBounds(month, year);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Draft | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -342,6 +369,7 @@ export function TradeSheet({
     const data = new FormData();
     data.set("id", editingId);
     data.set("trade_date", editDraft.tradeDate);
+    data.set("version", String(version));
     data.set("bias", editDraft.bias);
     data.set("direction", editDraft.direction);
     data.set("ratio", composeRatio("1", editDraft.reward));
@@ -384,7 +412,10 @@ export function TradeSheet({
 
   return (
     <>
-      <div className="overflow-x-auto">
+      {/* Rounded at the top so the header's fill follows the card's corners.
+          `overflow-x-auto` already clips the other axis, so this is all the
+          clipping the table needs — and none of it reaches the footer. */}
+      <div className="overflow-x-auto rounded-t-2xl">
         <table className="w-full min-w-[70rem] border-collapse">
           {/* Day is the widest of the fixed columns: "Wednesday" plus the
               select's chevron needs the room. Remarks gives it up — that column
@@ -427,6 +458,9 @@ export function TradeSheet({
                 onSubmit={onSaveDraft}
                 onPickFile={() => draftFileRef.current?.click()}
                 fallbackDate={fallbackDate}
+                month={month}
+                year={year}
+                bounds={bounds}
               />
               <td className={`${TD} text-right`}>
                 {draft.screenshot ? (
@@ -457,6 +491,9 @@ export function TradeSheet({
                         rowFileRef.current?.click();
                       }}
                       fallbackDate={fallbackDate}
+                      month={month}
+                      year={year}
+                      bounds={bounds}
                     />
                     <td className={`${TD} text-right`}>
                       <span className="flex items-center justify-end gap-1">
@@ -629,7 +666,7 @@ export function TradeSheet({
 
       {trades.length === 0 ? (
         <p className="px-5 py-6 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-          No trades in this month yet — the row above is ready when you are.
+          Nothing on this sheet yet — the row above is ready when you are.
         </p>
       ) : null}
 
