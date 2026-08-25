@@ -216,6 +216,60 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Risk slider
+   A range input styles nothing by default and each engine names its parts
+   differently, so both vendors are spelled out.
+   --------------------------------------------------------------------------- */
+.risk-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-gray-200);
+  outline: none;
+}
+
+.dark .risk-slider {
+  background: var(--color-gray-700);
+}
+
+.risk-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--color-brand-500);
+  border: 3px solid var(--color-white);
+  box-shadow: var(--shadow-theme-sm);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.dark .risk-slider::-webkit-slider-thumb {
+  border-color: var(--color-gray-900);
+}
+
+.risk-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.risk-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--color-brand-500);
+  border: 3px solid var(--color-white);
+  box-shadow: var(--shadow-theme-sm);
+  cursor: pointer;
+}
+
+.dark .risk-slider::-moz-range-thumb {
+  border-color: var(--color-gray-900);
+}
+
+/* ---------------------------------------------------------------------------
    Theme change
    The toggle wipes the new theme over the old one from the button that was
    pressed, using the View Transitions API. Browsers without it — and anyone

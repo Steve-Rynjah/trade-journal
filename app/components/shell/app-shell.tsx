@@ -36,6 +36,32 @@ const NAV = [
       </>
     ),
   },
+  {
+    href: "/calculator",
+    label: "Calculator",
+    hint: "Lots and units",
+    icon: (
+      <>
+        <rect
+          x="4"
+          y="2.6"
+          width="16"
+          height="18.8"
+          rx="3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+        />
+        <rect x="7.2" y="5.8" width="9.6" height="3.6" rx="1.2" />
+        <circle cx="8.6" cy="13.4" r="1.25" />
+        <circle cx="12" cy="13.4" r="1.25" />
+        <circle cx="15.4" cy="13.4" r="1.25" />
+        <circle cx="8.6" cy="17.4" r="1.25" />
+        <circle cx="12" cy="17.4" r="1.25" />
+        <circle cx="15.4" cy="17.4" r="1.25" />
+      </>
+    ),
+  },
 ] as const;
 
 export function AppShell({

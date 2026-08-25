@@ -1,6 +1,6 @@
 # Trade Journal
 
-A forex trading journal with two tabs:
+A forex trading journal with three tabs:
 
 - **Home** — the sheet. Type a trade straight across the open row at the top
   and hit **Save** (or press Enter in any cell); the pencil on a saved row turns
@@ -25,8 +25,24 @@ A forex trading journal with two tabs:
   The weekday bars show winning days minus losing days, scaled against the
   busiest weekday: green where you finish ahead, red where you don't.
 
-The sheet selection is shared by both tabs, and the journal is read once in the
-`(app)` layout — so switching tabs is instant, with no refetch.
+- **Calculator** — position sizing. Pick **EURUSD** or **XAUUSD**, set a
+  balance, a risk % (slider, presets, or both) and a stop loss in pips, and it
+  answers with **standard / mini / micro lots**, the **units** (ounces, for
+  gold), the risk amount and what a stop-out costs. The risk amount is derived
+  from the balance and the percentage rather than typed, the account currency is
+  fixed to USD, and a **custom pip value** can override the instrument's own for
+  a broker that quotes differently.
+
+  `lots = risk amount / (stop loss in pips × pip value per lot)`, where a pip is
+  worth `contract size × pip` per lot — $10 for both instruments, since EUR/USD
+  is 100,000 units at 0.0001 and gold is 100 ounces at 0.10. Both are quoted in
+  USD, so no conversion is involved. The card prints the pip value and contract
+  size it used, because gold's pip is the one people disagree about: a broker
+  calling `0.01` a pip would make every figure ten times larger.
+
+The sheet selection is shared by the journal and analytics tabs, and the journal
+is read once in the `(app)` layout — so switching tabs is instant, with no
+refetch.
 
 Built with Next.js 16 (App Router), Tailwind CSS v4, and Supabase for storage.
 The fonts (Outfit), brand blue and grey ramp are the
