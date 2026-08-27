@@ -40,6 +40,8 @@ export type LayerState = {
   hoveredId: string | null;
   candles: Candle[];
   timeframe: Timeframe;
+  /** Colour of the position progress arrow, straight from the chart theme. */
+  arrowColor: string;
   /**
    * Where a handle is being dragged right now, in pixels.
    *
@@ -63,6 +65,7 @@ export class DrawingLayer implements ISeriesPrimitive<Time> {
     hoveredId: null,
     candles: [],
     timeframe: "4h",
+    arrowColor: "rgba(120, 123, 134, 0.95)",
     guide: null,
   };
 
@@ -221,6 +224,54 @@ export class DrawingLayer implements ISeriesPrimitive<Time> {
   /** A price in pixels down the pane, for the axis chips. */
   priceToY(price: number): number | null {
     return this.series?.priceToCoordinate(price) ?? null;
+  }
+
+  /**
+   * Where the trade actually got to.
+   *
+   * Walks the candles inside the box and stops at the first one that touches
+   * either level, because that is where the trade would have been closed —
+   * carrying the arrow on to the right-hand edge drew a path price never took.
+   * When neither level is reached it ends on the last candle's close, still
+   * running.
+   */
+  progress(drawing: Drawing): { x: number; y: number; price: number; closed: boolean } | null {
+    const [entry, target, stop] = drawing.points;
+    if (!entry || !target || !stop) return null;
+
+    const from = Math.min(entry.time, target.time);
+    const to = Math.max(entry.time, target.time);
+    const candles = this.state.candles;
+    const long = drawing.kind === "long-position";
+
+    let last: { time: number; price: number } | null = null;
+    let closed = false;
+
+    for (const candle of candles) {
+      if (candle.time < from) continue;
+      if (candle.time > to) break;
+
+      // A level counts as touched on the wick, not the close: that is the
+      // moment the order would have filled.
+      const hitTarget = long ? candle.high >= target.price : candle.low <= target.price;
+      const hitStop = long ? candle.low <= stop.price : candle.high >= stop.price;
+
+      if (hitTarget || hitStop) {
+        // Both inside one candle is ambiguous from daily bars alone; the stop
+        // is assumed first, which is the conservative reading of a backtest.
+        last = { time: candle.time, price: hitStop ? stop.price : target.price };
+        closed = true;
+        break;
+      }
+
+      last = { time: candle.time, price: candle.close };
+    }
+
+    if (!last) return null;
+
+    const x = this.timeToX(last.time);
+    const y = this.priceToY(last.price);
+    return x === null || y === null ? null : { x, y, price: last.price, closed };
   }
 
   /** A time in pixels across the pane, for the date-strip chips and band. */
@@ -592,6 +643,33 @@ class DrawingRenderer implements IPrimitivePaneRenderer {
     // No outline on the boxes. The fill already states the extent, and a stroke
     // on top of it only competes with the candles inside.
 
+    // How far the trade has actually got, and which way.
+    const reached = this.layer.progress(drawing);
+    if (reached) {
+      const inProfit =
+        drawing.kind === "long-position"
+          ? reached.price >= entryAnchorPrice(drawing)
+          : reached.price <= entryAnchorPrice(drawing);
+
+      // A second wash over the ground already covered, from the entry out to
+      // where price stands. It is what turns the box from a plan into a
+      // running commentary — green while the trade is onside, red while it is not.
+      ctx.fillStyle = withAlpha(inProfit ? style.targetColor : style.stopColor, 0.2);
+      ctx.fillRect(
+        left,
+        Math.min(entry.y, reached.y),
+        Math.min(reached.x, right) - left,
+        Math.abs(reached.y - entry.y),
+      );
+
+      this.progressArrow(
+        ctx,
+        { x: left, y: entry.y },
+        { x: Math.min(reached.x, right), y: reached.y },
+        this.layer.getState().arrowColor,
+      );
+    }
+
     // The entry sits on the seam between the boxes and is what the other two
     // are measured from, so it gets its own line.
     ctx.strokeStyle = style.line;
@@ -640,6 +718,49 @@ class DrawingRenderer implements IPrimitivePaneRenderer {
    * trade". It only read as a decoration that could not be grabbed, so it is
    * gone: every handle now looks identical because every handle behaves alike.
    */
+  /**
+   * A dashed arrow from the entry to wherever price has reached.
+   *
+   * Deliberately neutral grey and dashed: it is a reading of the candles, not
+   * part of the plan the boxes describe, and colouring it would put a third
+   * green/red signal into a small space.
+   */
+  private progressArrow(
+    ctx: CanvasRenderingContext2D,
+    from: Screen,
+    to: Screen,
+    colour: string,
+  ): void {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+    // A trade stopped out on its own first bar draws a short vertical arrow
+    // rather than nothing — "it went straight against me" is worth seeing.
+    if (length < 3) return;
+
+    ctx.save();
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+
+    // The head is solid — a dashed arrowhead reads as a smudge at this size.
+    ctx.setLineDash([]);
+    const angle = Math.atan2(dy, dx);
+    const head = 8;
+    const spread = 0.42;
+    ctx.beginPath();
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - head * Math.cos(angle - spread), to.y - head * Math.sin(angle - spread));
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - head * Math.cos(angle + spread), to.y - head * Math.sin(angle + spread));
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private handles(ctx: CanvasRenderingContext2D, points: Screen[]): void {
     ctx.strokeStyle = HANDLE_STROKE;
     ctx.lineWidth = 2;
@@ -652,6 +773,11 @@ class DrawingRenderer implements IPrimitivePaneRenderer {
       ctx.stroke();
     }
   }
+}
+
+/** The entry price of a position, which is always its first anchor. */
+function entryAnchorPrice(drawing: Drawing): number {
+  return drawing.points[0].price;
 }
 
 /** A rounded chip behind label text, so it survives a busy candle field. */

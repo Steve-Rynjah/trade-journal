@@ -91,11 +91,11 @@ export function Chart({
   // otherwise capture whatever these were on the first render. Written in an
   // effect rather than during render: the handlers only ever read them in
   // response to input, which cannot happen before the commit that sets them.
-  const latest = useRef({ candles, timeframe, activeTool, drawings, selectedId, presets });
+  const latest = useRef({ candles, timeframe, activeTool, drawings, selectedId, presets, theme });
   const callbacks = useRef({ onDrawingsChange, onSelect, onToolUsed, onEdit });
 
   useEffect(() => {
-    latest.current = { candles, timeframe, activeTool, drawings, selectedId, presets };
+    latest.current = { candles, timeframe, activeTool, drawings, selectedId, presets, theme };
     themeRef.current = theme;
     callbacks.current = { onDrawingsChange, onSelect, onToolUsed, onEdit };
   });
@@ -109,6 +109,7 @@ export function Chart({
       hoveredId,
       candles: latest.current.candles,
       timeframe: latest.current.timeframe,
+      arrowColor: latest.current.theme.positionArrow,
       // Read from the ref, never passed in: dragging a handle re-renders on
       // every move, and that render calls `sync` again — an argument would be
       // dropped on the way through and the guide would flicker out instantly.

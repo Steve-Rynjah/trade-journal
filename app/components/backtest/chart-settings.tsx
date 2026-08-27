@@ -136,6 +136,13 @@ export function ChartSettings({
                 onChange={(scaleText) => set({ scaleText })} />
             </Row>
 
+            {/* Chart furniture rather than a candle property, so it lives here
+                beside the grid and the scales. */}
+            <Row label="Position arrow">
+              <Swatch id="arrow" open={open} setOpen={setOpen} value={theme.positionArrow}
+                onChange={(positionArrow) => set({ positionArrow })} />
+            </Row>
+
             <div className="border-t border-gray-100 pt-3 dark:border-gray-700">
               <p className="mb-2 text-theme-xs font-medium uppercase tracking-wide text-gray-400">
                 Margins

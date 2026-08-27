@@ -35,6 +35,14 @@ export type ChartTheme = {
   marginBottom: number;
   /** Empty bars kept to the right of the last candle. */
   rightOffset: number;
+
+  /**
+   * The dashed arrow a position draws from its entry to where price got to.
+   *
+   * A mid grey by default so it reads on a dark chart and a light one alike —
+   * the pale grey it started as vanished completely against a light background.
+   */
+  positionArrow: string;
 };
 
 /** TradingView's own dark palette, which is what the reference screenshots use. */
@@ -56,6 +64,7 @@ export const DARK_THEME: ChartTheme = {
   marginTop: 10,
   marginBottom: 8,
   rightOffset: 12,
+  positionArrow: "rgba(120, 123, 134, 0.95)",
 };
 
 export const LIGHT_THEME: ChartTheme = {
