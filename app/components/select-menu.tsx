@@ -17,6 +17,7 @@ export function SelectMenu<T extends string | number | null>({
   widthClass = "w-56",
   placement = "down",
   align = "left",
+  compact = false,
 }: {
   label: string;
   value: T;
@@ -31,6 +32,11 @@ export function SelectMenu<T extends string | number | null>({
    * needs `right`, or a list wider than the button spills past the card edge.
    */
   align?: "left" | "right";
+  /**
+   * A tighter button, for bars that have to sit inside a fixed-height strip.
+   * The default size is what the journal's filters use and stays untouched.
+   */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -63,7 +69,9 @@ export function SelectMenu<T extends string | number | null>({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={label}
-        className="inline-flex items-center gap-2.5 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-theme-sm font-medium text-gray-700 shadow-theme-xs transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/5"
+        className={`inline-flex items-center rounded-lg border border-gray-300 bg-white font-medium text-gray-700 shadow-theme-xs transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/5 ${
+          compact ? "gap-1.5 px-2.5 py-1 text-theme-xs" : "gap-2.5 px-4 py-2.5 text-theme-sm"
+        }`}
       >
         {icon}
         {current?.label ?? label}

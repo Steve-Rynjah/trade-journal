@@ -37,6 +37,23 @@ const NAV = [
     ),
   },
   {
+    href: "/backtest",
+    label: "Backtest",
+    hint: "Replay EURUSD",
+    icon: (
+      <>
+        <path
+          d="M3.4 12h3l2.2-5.4 3 10.8 2.4-7 1.8 3.4h4.8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </>
+    ),
+  },
+  {
     href: "/calculator",
     label: "Calculator",
     hint: "Lots and units",
