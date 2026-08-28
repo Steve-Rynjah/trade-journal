@@ -2,6 +2,7 @@
 
 import { SelectMenu } from "../select-menu";
 import { STEP_CHOICES } from "@/lib/backtest/sessions";
+import { SESSION_KEYS, SESSION_LABEL, type SessionKey } from "@/lib/backtest/session-indicator";
 
 /** Bars per second while playing. */
 export const SPEEDS = [0.5, 1, 2, 4, 10] as const;
@@ -24,6 +25,8 @@ export function ReplayBar({
   onStep,
   onSpeed,
   onStepSeconds,
+  onSkipToSession,
+  skipTargets,
 }: {
   playing: boolean;
   speed: Speed;
@@ -34,6 +37,14 @@ export function ReplayBar({
   onStep: (direction: 1 | -1) => void;
   onSpeed: (next: Speed) => void;
   onStepSeconds: (next: number) => void;
+  /** Jump the replay to the open of the next session of this kind. */
+  onSkipToSession: (key: SessionKey) => void;
+  /**
+   * When each session next opens, as a short label — or null when the data
+   * runs out before it does, which greys that row out rather than offering a
+   * jump that would quietly do nothing.
+   */
+  skipTargets: Record<SessionKey, string | null>;
 }) {
   return (
     // Inline in the header beside the timeframes. It used to float over the
@@ -90,6 +101,34 @@ export function ReplayBar({
         />
       </span>
 
+      <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-800" />
+
+      {/* An action menu, not a value picker: `value` stays null so no row ever
+          reads as chosen and the button keeps saying "Skip to". Watching one
+          London and wanting the next means skipping two whole sessions, which
+          is a long time to hold the step button down. */}
+      <span title="Jump to the next session open">
+        <SelectMenu<SessionKey | null>
+          label="Skip to"
+          value={null}
+          options={SESSION_KEYS.map((key) => ({
+            value: key,
+            label: SESSION_LABEL[key],
+            // No timestamp: the row names a session, and the date it would
+            // land on is not a choice anyone makes. The hint is kept only for
+            // the dead case, so a row that cannot move reads as disabled
+            // rather than as a click that did nothing.
+            hint: skipTargets[key] === null ? "no more data" : undefined,
+          }))}
+          onChange={(key) => {
+            if (key !== null && skipTargets[key] !== null) onSkipToSession(key);
+          }}
+          placement="down"
+          align="right"
+          widthClass="w-40"
+          compact
+        />
+      </span>
     </div>
   );
 }

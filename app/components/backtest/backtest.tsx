@@ -19,7 +19,20 @@ import { newId, type Drawing, type ToolKind } from "@/lib/backtest/drawings";
 import { styleFrom, type DrawingSet, type StylePreset } from "@/lib/backtest/sets";
 import type { BacktestSession } from "@/lib/backtest/sessions";
 import { DARK_THEME, loadTheme, saveTheme, type ChartTheme } from "@/lib/backtest/chart-theme";
+import {
+  DEFAULT_SESSION_SETTINGS,
+  SESSION_KEYS,
+  computeSessions,
+  loadSessionSettings,
+  nextSessionIndex,
+  saveSessionSettings,
+  type SessionKey,
+  type SessionSettings,
+} from "@/lib/backtest/session-indicator";
+import { displayClock, displayDate } from "@/lib/backtest/display-time";
 import { ChartSettings } from "./chart-settings";
+import { IntervalDialog } from "./interval-dialog";
+import { SessionSettingsPanel } from "./session-settings";
 import { StylePalette } from "./style-palette";
 import { Chart } from "./chart";
 import { ReplayBar, type Speed } from "./replay-bar";
@@ -96,6 +109,15 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
   );
   const [themeOpen, setThemeOpen] = useState(false);
 
+  /** Session Indicator inputs, remembered in the browser next to the theme. */
+  const [sessionSettings, setSessionSettings] = useState<SessionSettings>(() =>
+    typeof window === "undefined" ? DEFAULT_SESSION_SETTINGS : loadSessionSettings(),
+  );
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+
+  /** Text in the type-an-interval box, or null when it is not open. */
+  const [intervalText, setIntervalText] = useState<string | null>(null);
+
   /** Per-tool styling chosen from the rail, applied to the next shape drawn. */
   const [presets, setPresets] = useState<Partial<Record<ToolKind, StylePreset>>>({});
 
@@ -146,6 +168,22 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
     return sliceAt(series, base, cursor);
   }, [series, base, cursor]);
 
+  /**
+   * Session ranges for the whole series, not the replayed slice.
+   *
+   * Deliberately folded from `series.candles` rather than the sliced `candles`:
+   * this walks every bar, and hanging it off the slice would redo that on every
+   * replay tick. The chart layer trims the result to the cursor, so nothing
+   * ahead of the replay is ever drawn.
+   */
+  const sessionData = useMemo(
+    () =>
+      series
+        ? computeSessions(series.candles, sessionSettings, timeframe)
+        : computeSessions([], sessionSettings, timeframe),
+    [series, sessionSettings, timeframe],
+  );
+
   const moveCursor = useCallback(
     (next: number) => {
       if (!base) return;
@@ -154,6 +192,46 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
       if (clamped >= base.length - 1) setPlaying(false);
     },
     [base],
+  );
+
+  /**
+   * Where each session next opens, and what to call it in the menu.
+   *
+   * Computed from the 5-minute base array rather than from `sessionData`,
+   * deliberately: skipping has to work with the indicator switched off and on
+   * the 4h timeframe, where the indicator draws nothing at all.
+   */
+  const skip = useMemo(() => {
+    const targets = {} as Record<SessionKey, { index: number; label: string } | null>;
+    for (const key of SESSION_KEYS) {
+      const at =
+        base && cursor !== null
+          ? nextSessionIndex(base, cursor, sessionSettings.sessions[key])
+          : null;
+      targets[key] =
+        at === null || !base
+          ? null
+          : { index: at, label: `${displayDate(base[at].time)} ${displayClock(base[at].time)}` };
+    }
+    return targets;
+  }, [base, cursor, sessionSettings]);
+
+  const skipTargets = useMemo(() => {
+    const labels = {} as Record<SessionKey, string | null>;
+    for (const key of SESSION_KEYS) labels[key] = skip[key]?.label ?? null;
+    return labels;
+  }, [skip]);
+
+  const skipToSession = useCallback(
+    (key: SessionKey) => {
+      const target = skip[key];
+      if (!target) return;
+      // Pausing first, because landing on a session open and immediately
+      // playing through it is the opposite of what "skip to" was asked for.
+      setPlaying(false);
+      moveCursor(target.index);
+    },
+    [skip, moveCursor],
   );
 
   useEffect(() => {
@@ -240,6 +318,38 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
     return () => window.removeEventListener("keydown", onKey);
   }, [cursor, stride, moveCursor]);
 
+  /**
+   * A digit typed over the chart opens the interval box, seeded with it.
+   *
+   * Digits only, the way TradingView does it: a bare `H` is not the start of an
+   * interval, and opening on any keystroke would fight every other shortcut on
+   * the page. The panels are excluded because they own Escape while they are
+   * up, and two things closing on one keypress is a coin toss.
+   */
+  useEffect(() => {
+    if (intervalText !== null || themeOpen || sessionsOpen || editingId) return;
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (!/^[0-9]$/.test(event.key)) return;
+      event.preventDefault();
+      setIntervalText(event.key);
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [intervalText, themeOpen, sessionsOpen, editingId]);
+
   // One table holds both; `kind` is what tells a saved look from a saved shape.
   const shapeSets = useMemo(() => sets.filter((set) => set.kind === null), [sets]);
   const styleSets = useMemo(() => sets.filter((set) => set.kind !== null), [sets]);
@@ -295,6 +405,8 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
         {base && cursor !== null ? (
           <div className="ml-3 flex items-center gap-1 border-l border-gray-200 pl-3 dark:border-gray-800">
             <ReplayBar
+              onSkipToSession={skipToSession}
+              skipTargets={skipTargets}
               playing={playing}
               speed={speed}
               stepSeconds={stepSeconds}
@@ -333,6 +445,8 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
           active={activeTool}
           onPick={setActiveTool}
           onChartSettings={() => setThemeOpen((open) => !open)}
+          onSessionSettings={() => setSessionsOpen((open) => !open)}
+          sessionsOn={sessionSettings.enabled}
           onClear={() => {
             setDrawings([]);
             setSelectedId(null);
@@ -358,6 +472,8 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
               onSelect={setSelectedId}
               presets={presets}
               theme={theme}
+              sessions={sessionSettings}
+              sessionData={sessionData}
               onEdit={setEditingId}
             />
           )}
@@ -417,6 +533,29 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
                 saveTheme(next);
               }}
               onClose={() => setThemeOpen(false)}
+            />
+          ) : null}
+
+          {intervalText !== null ? (
+            <IntervalDialog
+              text={intervalText}
+              onText={setIntervalText}
+              onApply={(next) => {
+                setTimeframe(next);
+                setIntervalText(null);
+              }}
+              onClose={() => setIntervalText(null)}
+            />
+          ) : null}
+
+          {sessionsOpen ? (
+            <SessionSettingsPanel
+              settings={sessionSettings}
+              onChange={(next) => {
+                setSessionSettings(next);
+                saveSessionSettings(next);
+              }}
+              onClose={() => setSessionsOpen(false)}
             />
           ) : null}
 

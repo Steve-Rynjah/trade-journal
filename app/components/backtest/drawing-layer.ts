@@ -22,6 +22,7 @@ import type {
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 
 import type { Candle, Timeframe } from "@/lib/backtest/candles";
+import { displayStamp } from "@/lib/backtest/display-time";
 import {
   positionStats,
   styleOf,
@@ -308,12 +309,9 @@ class EdgeAxisView implements ISeriesPrimitiveAxisView {
   }
 
   text(): string {
-    const d = new Date(this.time * 1000);
-    const day = d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
-    const date = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
-    const year = `'${String(d.getUTCFullYear()).slice(2)}`;
-    const time = d.toISOString().slice(11, 16);
-    return `${day} ${date} ${year} ${time}`;
+    // Through the same formatter the axis uses, or this chip would read UTC
+    // while the date strip an inch below it read IST.
+    return displayStamp(this.time);
   }
 
   textColor(): string {

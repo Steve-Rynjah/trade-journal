@@ -26,7 +26,10 @@ import {
   type ToolKind,
 } from "@/lib/backtest/drawings";
 import type { Screen } from "@/lib/backtest/drawings";
+import { displayStamp, displayTickMark } from "@/lib/backtest/display-time";
+import type { SessionData, SessionSettings } from "@/lib/backtest/session-indicator";
 import { DrawingLayer } from "./drawing-layer";
+import { SessionLayer } from "./session-layer";
 import { hitTest, type Hit } from "./hit-test";
 
 type Props = {
@@ -44,6 +47,15 @@ type Props = {
   /** Saved per-tool styling, applied to the next drawing of that kind. */
   presets: Partial<Record<ToolKind, Partial<Drawing>>>;
   theme: ChartTheme;
+  /** The Session Indicator's inputs and styling. */
+  sessions: SessionSettings;
+  /**
+   * Session ranges folded from the *whole* series, not the replayed slice.
+   *
+   * The layer trims them to the newest visible candle itself. Folding here on
+   * every replay tick would re-walk a hundred thousand candles a second.
+   */
+  sessionData: SessionData;
 };
 
 /** What the pointer is currently in the middle of doing. */
@@ -71,12 +83,15 @@ export function Chart({
   onEdit,
   presets,
   theme,
+  sessions,
+  sessionData,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick", Time> | null>(null);
   const layerRef = useRef<DrawingLayer | null>(null);
+  const sessionRef = useRef<SessionLayer | null>(null);
   const gestureRef = useRef<Gesture>({ mode: "idle" });
   /** What the series currently holds, so a replay tick can update one bar. */
   const appliedRef = useRef<{ key: string; length: number } | null>(null);
@@ -169,8 +184,19 @@ export function Chart({
     const chart = createChart(host, {
       layout: { attributionLogo: false, fontFamily: "Outfit, ui-sans-serif, system-ui, sans-serif" },
       crosshair: { mode: CrosshairMode.Normal },
+      // Every timestamp stays real UTC; only what the axis *prints* is shifted
+      // into the trading timezone. See lib/backtest/display-time.ts for why.
+      localization: { timeFormatter: (time: Time) => displayStamp(time as number) },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.12 } },
-      timeScale: { borderVisible: false, rightOffset: 12, barSpacing: 8, timeVisible: true, secondsVisible: false },
+      timeScale: {
+        borderVisible: false,
+        rightOffset: 12,
+        barSpacing: 8,
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: (time: Time, tickMarkType: number) =>
+          displayTickMark(time as number, tickMarkType),
+      },
       // The bars must not slide under the cursor while a shape is being dragged
       // out, so the chart's own drag handling stays off until a gesture ends.
       handleScroll: true,
@@ -181,12 +207,18 @@ export function Chart({
       priceFormat: { type: "price", precision: 5, minMove: 0.00001 },
     });
 
+    // Attached first so it paints first: the indicator is the backdrop the
+    // drawings sit on, and a session box over a position box reads as a bug.
+    const sessionLayer = new SessionLayer();
+    series.attachPrimitive(sessionLayer);
+
     const layer = new DrawingLayer();
     series.attachPrimitive(layer);
 
     chartRef.current = chart;
     seriesRef.current = series;
     layerRef.current = layer;
+    sessionRef.current = sessionLayer;
     // This series is empty, so the next data effect must lay down the whole set.
     // Leaving stale bookkeeping here is what makes a remount — React StrictMode
     // performs one in development — feed a single bar into an empty chart.
@@ -281,6 +313,7 @@ export function Chart({
       chartRef.current = null;
       seriesRef.current = null;
       layerRef.current = null;
+      sessionRef.current = null;
       appliedRef.current = null;
     };
   }, []);
@@ -380,6 +413,18 @@ export function Chart({
   useEffect(() => {
     sync(gestureRef.current.mode === "creating" ? gestureRef.current.draft : null);
   }, [drawings, selectedId, timeframe, sync]);
+
+  // The indicator gets its own effect: it depends on the candles and the
+  // settings, and nothing about it should rebuild the chart or the drawings.
+  useEffect(() => {
+    sessionRef.current?.update({
+      data: sessionData,
+      settings: sessions,
+      candles,
+      timeframe,
+      cutoff: candles.length > 0 ? candles[candles.length - 1].time : 0,
+    });
+  }, [sessionData, sessions, candles, timeframe]);
 
   // ---- pointer interaction ------------------------------------------------
   useEffect(() => {
