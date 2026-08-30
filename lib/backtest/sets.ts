@@ -39,6 +39,11 @@ const PRESET_FIELDS = [
   "targetColor",
   "accountSize",
   "riskPercent",
+  // How a label is set carries over; the words in it never do — a saved style
+  // is a look, and pasting someone else's note onto a new chart is not one.
+  "fontSize",
+  "bold",
+  "italic",
 ] as const;
 
 /** Strips a drawing down to just its look, dropping where it sat. */

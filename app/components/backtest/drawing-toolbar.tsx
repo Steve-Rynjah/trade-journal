@@ -4,22 +4,25 @@ import { useEffect, useRef, useState, useTransition } from "react";
 
 import { deleteSet, saveSet, saveStyle, type SetsResult } from "@/app/backtest-actions";
 import type { Timeframe } from "@/lib/backtest/candles";
-import { TOOL_LABEL, type Drawing } from "@/lib/backtest/drawings";
+import { FONT_SIZES, TOOL_LABEL, styleOf, type Drawing } from "@/lib/backtest/drawings";
 import type { DrawingSet } from "@/lib/backtest/sets";
+import { ColourButton, ColourPicker } from "./colour-picker";
 import { Grip, useDraggable } from "./use-draggable";
 
 /**
  * The bar that appears beside whatever drawing is selected.
  *
- * Deliberately four controls and no more: save it, recolour it, open its
- * settings, delete it. Everything the chart header used to carry lives here
- * instead, next to the thing it acts on.
+ * Deliberately few controls: save it, open its settings, delete it. Everything
+ * the chart header used to carry lives here instead, next to the thing it acts
+ * on. A label earns two extras — its colour and its size are what you actually
+ * reach for once the words are down, and neither is worth a trip to the panel.
  */
 export function DrawingToolbar({
   drawing,
   sets,
   timeframe,
   allDrawings,
+  onChange,
   onSettings,
   onDelete,
   onSets,
@@ -29,6 +32,7 @@ export function DrawingToolbar({
   sets: DrawingSet[];
   timeframe: Timeframe;
   allDrawings: Drawing[];
+  onChange: (next: Drawing) => void;
   onSettings: () => void;
   onDelete: () => void;
   onSets: (result: SetsResult) => void;
@@ -36,6 +40,9 @@ export function DrawingToolbar({
 }) {
   const { gripProps, style } = useDraggable();
   const [saveOpen, setSaveOpen] = useState(false);
+  const [colourOpen, setColourOpen] = useState(false);
+  const isText = drawing.kind === "text";
+  const text = styleOf(drawing);
 
   return (
     <div
@@ -65,6 +72,43 @@ export function DrawingToolbar({
           />
         ) : null}
       </div>
+
+      {isText ? (
+        <>
+          <IconButton label="Edit text" onClick={onSettings}>
+            <path d="M6.5 6.5V5h11v1.5M12 5.2v13.6M9.5 18.8h5" />
+          </IconButton>
+
+          <select
+            value={text.fontSize}
+            onChange={(event) => onChange({ ...drawing, fontSize: Number(event.target.value) })}
+            aria-label="Font size"
+            title="Font size"
+            className="mx-0.5 cursor-pointer rounded-md border-0 bg-transparent py-1 text-theme-xs tabular-nums text-gray-600 outline-none dark:text-gray-300"
+          >
+            {FONT_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+
+          <div className="relative mx-0.5">
+            <ColourButton
+              value={text.line}
+              title="Text colour"
+              onClick={() => setColourOpen((was) => !was)}
+            />
+            {colourOpen ? (
+              <ColourPicker
+                value={text.line}
+                onChange={(color) => onChange({ ...drawing, color })}
+                onClose={() => setColourOpen(false)}
+              />
+            ) : null}
+          </div>
+        </>
+      ) : null}
 
       <IconButton label="Settings" onClick={onSettings}>
         {/* A toothed gear rather than radiating spokes — the latter reads as a

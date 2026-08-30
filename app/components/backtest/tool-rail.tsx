@@ -26,8 +26,9 @@ const CURSORS: { kind: CursorKind; icon: React.ReactNode }[] = [
 ];
 
 /**
- * The six tools, drawn the way TradingView draws them: a thin monochrome glyph
- * with open circles marking where the shape's grab points will be.
+ * The tools, drawn the way TradingView draws them: a thin monochrome glyph with
+ * open circles marking where the shape's grab points will be. Text is the one
+ * exception — it has no grab points, so it is just the letter.
  */
 const TOOLS: { kind: ToolKind; icon: React.ReactNode }[] = [
   {
@@ -90,6 +91,10 @@ const TOOLS: { kind: ToolKind; icon: React.ReactNode }[] = [
       </>
     ),
   },
+  {
+    kind: "text",
+    icon: <path d="M6.5 7.5V6h11v1.5M12 6.2v11.6M9.5 17.8h5" />,
+  },
 ];
 
 /** The open circles TradingView uses to show a tool's grab points. */
@@ -110,9 +115,6 @@ export function ToolRail({
   onPick,
   onClear,
   canClear,
-  onChartSettings,
-  onSessionSettings,
-  sessionsOn,
 }: {
   /** Which pointer mode is in force while no drawing tool is armed. */
   cursorKind: CursorKind;
@@ -121,11 +123,6 @@ export function ToolRail({
   onPick: (kind: ToolKind | null) => void;
   onClear: () => void;
   canClear: boolean;
-  /** Saved style presets, keyed by the tool they belong to. */
-  onChartSettings: () => void;
-  onSessionSettings: () => void;
-  /** Lights the button up while the indicator is switched on. */
-  sessionsOn: boolean;
 }) {
   return (
     <div className="relative flex w-[52px] shrink-0 flex-col items-center gap-1 border-r border-gray-200 py-2 dark:border-gray-800">
@@ -177,44 +174,6 @@ export function ToolRail({
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
           <path d="M5 7h14M10 7V5.5a1 1 0 011-1h2a1 1 0 011 1V7M7 7l.8 11.2a1.5 1.5 0 001.5 1.3h5.4a1.5 1.5 0 001.5-1.3L17 7" />
-        </svg>
-      </button>
-
-      {/* Asian / London / New York ranges. Three stacked bands, which is what
-          the indicator actually puts on the chart. */}
-      <button
-        type="button"
-        title="Session Indicator"
-        aria-label="Session Indicator"
-        aria-pressed={sessionsOn}
-        onClick={onSessionSettings}
-        className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
-          sessionsOn
-            ? "bg-brand-50 text-brand-500 dark:bg-white/10 dark:text-brand-400"
-            : "text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-100"
-        }`}
-      >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
-          <rect x="3.5" y="5.5" width="6" height="6" rx="0.8" />
-          <rect x="9.5" y="9.5" width="6" height="6" rx="0.8" />
-          <rect x="15.5" y="7.5" width="5" height="6" rx="0.8" />
-          <path d="M3.5 19.5h17" />
-        </svg>
-      </button>
-
-      {/* Canvas and candle appearance — the surface everything else sits on,
-          so it lives at the foot of the rail rather than in the chart header. */}
-      <button
-        type="button"
-        title="Chart appearance"
-        aria-label="Chart appearance"
-        onClick={onChartSettings}
-        className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-100"
-      >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M8 4.5v15M16 4.5v15" />
-          <rect x="5.5" y="8" width="5" height="8" rx="1" />
-          <rect x="13.5" y="6.5" width="5" height="8" rx="1" />
         </svg>
       </button>
 

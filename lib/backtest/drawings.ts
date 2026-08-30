@@ -16,7 +16,8 @@ export type ToolKind =
   | "horizontal-ray"
   | "vertical-line"
   | "long-position"
-  | "short-position";
+  | "short-position"
+  | "text";
 
 export type Anchor = { time: number; price: number };
 
@@ -30,6 +31,7 @@ export type Drawing = {
    * - vertical-line: one origin; only `time` is read
    * - long/short-position: [entry, target, stop] — `time` of [0] and [1] give
    *   the box's left and right edges, [2] contributes only its price
+   * - text: one origin, which is the label box's top-left corner
    */
   points: Anchor[];
   /** Line / border colour. */
@@ -54,8 +56,15 @@ export type Drawing = {
   /** Position sizing, which is what turns a box into money on the labels. */
   accountSize?: number;
   riskPercent?: number;
-  /** A note rendered in a gap in the middle of a trend line. */
+  /**
+   * The words themselves: a label's whole content, or the note a trend line
+   * carries in a gap at its midpoint. Newlines are kept and drawn as lines.
+   */
   text?: string;
+  /** How that text is set. Only the text tool exposes these. */
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
 
   /** Set when the drawing came from a saved set, so the UI can group them. */
   setId?: string;
@@ -66,6 +75,10 @@ export const DEFAULT_FILL_ALPHA = 0.15;
 export const STOP_COLOR = "#f23645";
 export const TARGET_COLOR = "#089981";
 export const DEFAULT_ACCOUNT = 5_000;
+/** Matches the 12px the chart's own labels are drawn at, so a note sits with them. */
+export const DEFAULT_FONT_SIZE = 12;
+/** What the size dropdown offers — TradingView's ladder, minus the extremes. */
+export const FONT_SIZES = [10, 12, 14, 16, 20, 24, 28, 32, 40];
 export const DEFAULT_RISK_PERCENT = 1;
 
 /** Reads a style field, falling back to what the tool looks like by default. */
@@ -82,6 +95,9 @@ export function styleOf(drawing: Drawing) {
     targetColor: drawing.targetColor ?? TARGET_COLOR,
     accountSize: drawing.accountSize ?? DEFAULT_ACCOUNT,
     riskPercent: drawing.riskPercent ?? DEFAULT_RISK_PERCENT,
+    fontSize: drawing.fontSize ?? DEFAULT_FONT_SIZE,
+    bold: drawing.bold ?? false,
+    italic: drawing.italic ?? false,
   };
 }
 
@@ -93,6 +109,7 @@ export const ANCHOR_COUNT: Record<ToolKind, number> = {
   "vertical-line": 1,
   "long-position": 2,
   "short-position": 2,
+  text: 1,
 };
 
 export const TOOL_LABEL: Record<ToolKind, string> = {
@@ -102,6 +119,7 @@ export const TOOL_LABEL: Record<ToolKind, string> = {
   "vertical-line": "Vertical Line",
   "long-position": "Long Position",
   "short-position": "Short Position",
+  text: "Text",
 };
 
 export const DEFAULT_COLOR = "#2962ff";
@@ -124,6 +142,9 @@ export const TOOL_DEFAULTS: Record<ToolKind, { color: string; lineWidth: number 
   "vertical-line": { color: DEFAULT_COLOR, lineWidth: 2 },
   "long-position": { color: ENTRY_LINE, lineWidth: 1 },
   "short-position": { color: ENTRY_LINE, lineWidth: 1 },
+  // Blue rather than the reference's white: this chart has a light theme too,
+  // and white text on it is a note you cannot read.
+  text: { color: DEFAULT_COLOR, lineWidth: 1 },
 };
 
 /**
@@ -286,7 +307,7 @@ export function newId(): string {
  * `risk`, ready to be adjusted by its handles.
  */
 export function seedAnchors(kind: ToolKind, from: Anchor, to: Anchor, risk = 0): Anchor[] {
-  if (kind === "horizontal-ray" || kind === "vertical-line") return [from];
+  if (kind === "horizontal-ray" || kind === "vertical-line" || kind === "text") return [from];
   if (kind === "rectangle" || kind === "trendline") return [from, to];
 
   const long = kind === "long-position";

@@ -83,10 +83,15 @@ export function SessionSettingsPanel({
     });
 
   return (
+    // Centred on the chart rather than tucked against the rail it used to open
+    // from: it is the tallest panel here and its trigger now lives in the
+    // header, so there is no corner it belongs to any more. Tailwind writes the
+    // centring to the `translate` property while the drag writes `transform`,
+    // so the two compose and dragging still nudges it from where it opened.
     <div
       ref={ref}
       style={dragStyle}
-      className="absolute left-14 top-4 z-50 max-h-[80vh] w-[25rem] overflow-y-auto rounded-xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-700 dark:bg-[#1e222d]"
+      className="absolute left-1/2 top-1/2 z-50 max-h-[80vh] w-[25rem] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-700 dark:bg-[#1e222d]"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">

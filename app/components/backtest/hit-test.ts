@@ -14,7 +14,7 @@ import {
   type Drawing,
   type Screen,
 } from "@/lib/backtest/drawings";
-import { handlePoints, type DrawingLayer } from "./drawing-layer";
+import { handlePoints, textBox, type DrawingLayer } from "./drawing-layer";
 
 /** Pixels of forgiveness around a line or handle. Tuned to feel like a mouse, not a pixel hunt. */
 const SLOP = 6;
@@ -147,6 +147,19 @@ function overBody(
 
     case "vertical-line":
       return Math.abs(point.x - screen[0].x) <= SLOP;
+
+    case "text": {
+      // The whole box answers in both pointer modes. A label is a small object
+      // you move, not a zone you read across, so narrowing it to its outline
+      // in Cross mode would only make it a pixel hunt.
+      const box = textBox(drawing, screen[0]);
+      return insideRect(
+        point,
+        { x: box.x, y: box.y },
+        { x: box.x + box.width, y: box.y + box.height },
+        SLOP,
+      );
+    }
 
     case "long-position":
     case "short-position": {

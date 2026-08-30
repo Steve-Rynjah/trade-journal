@@ -659,6 +659,10 @@ export function Chart({
         callbacks.current.onDrawingsChange([...latest.current.drawings, committed]);
         callbacks.current.onSelect(committed.id);
         callbacks.current.onToolUsed();
+        // A label placed and left blank says nothing, so placing one opens its
+        // editor straight away with the caret already in the box — the click
+        // and the typing are one motion.
+        if (committed.kind === "text") callbacks.current.onEdit(committed.id);
       }
 
       setCapturing(false, "default");

@@ -56,7 +56,70 @@ export type LayerState = {
 
 const HANDLE_RADIUS = 5;
 const HANDLE_STROKE = "#2962ff";
-const FONT = "12px Outfit, ui-sans-serif, system-ui, sans-serif";
+const FONT_STACK = "Outfit, ui-sans-serif, system-ui, sans-serif";
+const FONT = `12px ${FONT_STACK}`;
+
+/** Shown in place of a label that has nothing in it yet. */
+export const TEXT_PLACEHOLDER = "Add text";
+const TEXT_PAD_X = 6;
+const TEXT_PAD_Y = 4;
+/** Line spacing as a multiple of the font size. */
+const TEXT_LINE_RATIO = 1.35;
+/** The grey a placeholder and its dashed box are drawn in. */
+const TEXT_GHOST = "rgba(150, 156, 170, 0.9)";
+
+/** The CSS font string a label is set in. */
+export function textFont(drawing: Drawing): string {
+  const style = styleOf(drawing);
+  return `${style.italic ? "italic " : ""}${style.bold ? "600 " : ""}${style.fontSize}px ${FONT_STACK}`;
+}
+
+/**
+ * A canvas kept purely to measure text.
+ *
+ * Hit-testing has to know how wide a label is, and it runs nowhere near a
+ * render target — measuring against a second context is the only way both
+ * sides agree on the box, and disagreeing would mean grabbing at thin air.
+ */
+let measurer: CanvasRenderingContext2D | null = null;
+
+function widestLine(lines: string[], font: string): number {
+  if (measurer === null && typeof document !== "undefined") {
+    measurer = document.createElement("canvas").getContext("2d");
+  }
+  if (!measurer) return Math.max(...lines.map((line) => line.length * 7));
+  measurer.font = font;
+  return Math.max(...lines.map((line) => measurer!.measureText(line).width));
+}
+
+/**
+ * The box a text drawing occupies on screen, with `origin` its top-left corner.
+ *
+ * Shared by the renderer and the hit-test for the same reason `handlePoints`
+ * is: two measurements of the same label would drift apart the first time
+ * either was touched.
+ */
+export function textBox(
+  drawing: Drawing,
+  origin: Screen,
+): { x: number; y: number; width: number; height: number; lines: string[]; lineHeight: number; font: string; empty: boolean } {
+  const body = drawing.text ?? "";
+  const empty = body.trim() === "";
+  const lines = empty ? [TEXT_PLACEHOLDER] : body.split("\n");
+  const font = textFont(drawing);
+  const lineHeight = styleOf(drawing).fontSize * TEXT_LINE_RATIO;
+
+  return {
+    x: origin.x,
+    y: origin.y,
+    width: widestLine(lines, font) + TEXT_PAD_X * 2,
+    height: lines.length * lineHeight + TEXT_PAD_Y * 2,
+    lines,
+    lineHeight,
+    font,
+    empty,
+  };
+}
 
 export class DrawingLayer implements ISeriesPrimitive<Time> {
   private state: LayerState = {
@@ -426,6 +489,11 @@ class LevelAxisView implements ISeriesPrimitiveAxisView {
  * first time either was adjusted.
  */
 export function handlePoints(drawing: Drawing, screen: Screen[]): Screen[] {
+  // A label has no grips. Its whole box is the grab target and the outline
+  // already says so — a lone circle on one corner only invites a drag that
+  // would resize nothing.
+  if (drawing.kind === "text") return [];
+
   if (drawing.kind === "long-position" || drawing.kind === "short-position") {
     const [entry, target, stop] = screen;
     const left = Math.min(entry.x, target.x);
@@ -538,9 +606,49 @@ class DrawingRenderer implements IPrimitivePaneRenderer {
         // is exactly why TradingView drops them the moment you click away.
         this.position(ctx, drawing, screen, selected || hovered);
         break;
+
+      case "text":
+        this.text(ctx, drawing, screen[0], selected || hovered);
+        break;
     }
 
     if (selected || hovered) this.handles(ctx, handlePoints(drawing, screen));
+  }
+
+  /**
+   * A free-standing label, anchored by its top-left corner.
+   *
+   * An empty one still draws: it shows the placeholder inside a dashed box, so
+   * placing a label and then clicking away does not look like the click did
+   * nothing at all — there is visibly something there to come back and fill in.
+   */
+  private text(
+    ctx: CanvasRenderingContext2D,
+    drawing: Drawing,
+    origin: Screen,
+    active: boolean,
+  ): void {
+    const box = textBox(drawing, origin);
+
+    ctx.save();
+    ctx.font = box.font;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = box.empty ? TEXT_GHOST : styleOf(drawing).line;
+
+    box.lines.forEach((line, i) => {
+      ctx.fillText(line, box.x + TEXT_PAD_X, box.y + TEXT_PAD_Y + box.lineHeight * (i + 0.5));
+    });
+
+    if (active || box.empty) {
+      ctx.strokeStyle = active ? HANDLE_STROKE : TEXT_GHOST;
+      ctx.lineWidth = 1;
+      ctx.setLineDash(active ? [] : [3, 3]);
+      // Half-pixel inset so a 1px outline lands on a pixel instead of across two.
+      ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.width - 1, box.height - 1);
+    }
+
+    ctx.restore();
   }
 
   /**

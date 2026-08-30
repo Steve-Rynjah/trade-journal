@@ -48,7 +48,7 @@ export function ChartSettings({
     <div
       ref={ref}
       style={dragStyle}
-      className="absolute left-14 top-4 z-50 w-[23rem] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-700 dark:bg-[#1e222d]"
+      className="absolute right-4 top-4 z-50 w-[23rem] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-700 dark:bg-[#1e222d]"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">

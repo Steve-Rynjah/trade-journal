@@ -33,6 +33,7 @@ import {
 import { displayClock, displayDate } from "@/lib/backtest/display-time";
 import { ChartSettings } from "./chart-settings";
 import { IntervalDialog } from "./interval-dialog";
+import { SessionMenu } from "./session-menu";
 import { SessionSettingsPanel } from "./session-settings";
 import { StylePalette } from "./style-palette";
 import { Chart } from "./chart";
@@ -430,6 +431,20 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
               onSpeed={setSpeed}
               onStepSeconds={setStepSeconds}
             />
+
+            {/* The same hairline rule the transport uses between its own
+                groups — the indicator belongs with "Skip to", not inside it. */}
+            <span className="mx-1.5 h-6 w-px bg-gray-200 dark:bg-gray-800" aria-hidden="true" />
+
+            <SessionMenu
+              on={sessionSettings.enabled}
+              onToggle={(enabled) => {
+                const next = { ...sessionSettings, enabled };
+                setSessionSettings(next);
+                saveSessionSettings(next);
+              }}
+              onSettings={() => setSessionsOpen((open) => !open)}
+            />
           </div>
         ) : null}
 
@@ -441,6 +456,29 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
               Not saved
             </span>
           ) : null}
+
+          {/* Canvas and candle appearance. It sat at the foot of the tool rail,
+              which is for the things you draw — how the surface underneath them
+              looks is a property of the whole chart, so it belongs in the
+              header's corner with the rest of the chart-level controls. */}
+          <button
+            type="button"
+            title="Chart appearance"
+            aria-label="Chart appearance"
+            aria-expanded={themeOpen}
+            onClick={() => setThemeOpen((open) => !open)}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+              themeOpen
+                ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400"
+                : "text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
+            }`}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M8 4.5v15M16 4.5v15" />
+              <rect x="5.5" y="8" width="5" height="8" rx="1" />
+              <rect x="13.5" y="6.5" width="5" height="8" rx="1" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -462,9 +500,6 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
           }}
           active={activeTool}
           onPick={setActiveTool}
-          onChartSettings={() => setThemeOpen((open) => !open)}
-          onSessionSettings={() => setSessionsOpen((open) => !open)}
-          sessionsOn={sessionSettings.enabled}
           onClear={() => {
             setDrawings([]);
             setSelectedId(null);
@@ -503,6 +538,9 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
               sets={shapeSets}
               timeframe={timeframe}
               allDrawings={drawings}
+              onChange={(next) =>
+                setDrawings((current) => current.map((d) => (d.id === next.id ? next : d)))
+              }
               onSettings={() => setEditingId(selected.id)}
               onDelete={() => {
                 setDrawings((current) => current.filter((d) => d.id !== selected.id));

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { TOOL_LABEL, styleOf, type Drawing } from "@/lib/backtest/drawings";
+import { FONT_SIZES, TOOL_LABEL, styleOf, type Drawing } from "@/lib/backtest/drawings";
 import { ColourButton, ColourPicker } from "./colour-picker";
 import { Grip, useDraggable } from "./use-draggable";
 
@@ -51,6 +51,7 @@ export function StyleEditor({
   const isPosition = drawing.kind === "long-position" || drawing.kind === "short-position";
   const isRectangle = drawing.kind === "rectangle";
   const isLine = drawing.kind === "trendline";
+  const isText = drawing.kind === "text";
 
   return (
     <div
@@ -80,16 +81,72 @@ export function StyleEditor({
       </div>
 
       <div className="mt-3 space-y-3">
-        <Row label={isPosition ? "Entry line" : "Line"}>
-          <Swatch
-            id="line"
-            open={open}
-            setOpen={setOpen}
-            value={style.line}
-            onChange={(color) => set({ color })}
-          />
-          <Width value={style.lineWidth} onChange={(lineWidth) => set({ lineWidth })} />
-        </Row>
+        {/* A label has no line to weight, so the usual colour-and-width row is
+            replaced by how the type is set. */}
+        {isText ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Swatch
+                id="line"
+                open={open}
+                setOpen={setOpen}
+                value={style.line}
+                onChange={(color) => set({ color })}
+              />
+              <select
+                value={style.fontSize}
+                onChange={(event) => set({ fontSize: Number(event.target.value) })}
+                aria-label="Font size"
+                className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-theme-xs text-gray-800 dark:border-gray-700 dark:bg-white/5 dark:text-gray-200"
+              >
+                {FONT_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+              <Face
+                on={style.bold}
+                label="Bold"
+                onClick={() => set({ bold: !style.bold })}
+                className="font-bold"
+              >
+                B
+              </Face>
+              <Face
+                on={style.italic}
+                label="Italic"
+                onClick={() => set({ italic: !style.italic })}
+                className="font-serif italic"
+              >
+                I
+              </Face>
+            </div>
+
+            {/* Autofocused because a label is placed and then written in one
+                motion — the tool exists to get words onto the chart. */}
+            <textarea
+              autoFocus
+              value={drawing.text ?? ""}
+              onChange={(event) => set({ text: event.target.value })}
+              placeholder="Add text"
+              aria-label="Label text"
+              rows={4}
+              className="w-full resize-y rounded-lg border border-brand-400 bg-white px-2.5 py-2 text-theme-xs text-gray-800 outline-none dark:bg-white/5 dark:text-gray-200"
+            />
+          </>
+        ) : (
+          <Row label={isPosition ? "Entry line" : "Line"}>
+            <Swatch
+              id="line"
+              open={open}
+              setOpen={setOpen}
+              value={style.line}
+              onChange={(color) => set({ color })}
+            />
+            <Width value={style.lineWidth} onChange={(lineWidth) => set({ lineWidth })} />
+          </Row>
+        )}
 
         {isLine ? (
           <Row label="Text">
@@ -262,6 +319,38 @@ function Swatch({
         />
       ) : null}
     </div>
+  );
+}
+
+/** A B / I style button that stays pressed while the face is on. */
+function Face({
+  on,
+  label,
+  onClick,
+  className,
+  children,
+}: {
+  on: boolean;
+  label: string;
+  onClick: () => void;
+  className: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={on}
+      className={`flex h-8 w-8 items-center justify-center rounded-md border text-theme-sm transition-colors ${className} ${
+        on
+          ? "border-gray-300 bg-gray-200 text-gray-900 dark:border-gray-600 dark:bg-white/20 dark:text-white"
+          : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
