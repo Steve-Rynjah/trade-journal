@@ -40,7 +40,18 @@ export type Hit = {
   anchor: number | null;
 };
 
-export function hitTest(layer: DrawingLayer, drawings: Drawing[], point: Screen): Hit | null {
+/**
+ * @param edgesOnly Only the outline, the lines and the handles answer — a click
+ *   inside a rectangle or a position box passes through to the chart. This is
+ *   what the Cross pointer mode uses, so a marked-up zone can still be read
+ *   across and panned from.
+ */
+export function hitTest(
+  layer: DrawingLayer,
+  drawings: Drawing[],
+  point: Screen,
+  edgesOnly = false,
+): Hit | null {
   const size = layer.size();
   if (!size) return null;
 
@@ -65,7 +76,7 @@ export function hitTest(layer: DrawingLayer, drawings: Drawing[], point: Screen)
     const edge = positionEdge(drawing, screen, point);
     if (edge !== null) return { drawing, anchor: edge };
 
-    if (overBody(drawing, screen, point, size)) return { drawing, anchor: null };
+    if (overBody(drawing, screen, point, size, edgesOnly)) return { drawing, anchor: null };
   }
 
   return null;
@@ -109,6 +120,7 @@ function overBody(
   screen: Screen[],
   point: Screen,
   size: { width: number; height: number },
+  edgesOnly: boolean,
 ): boolean {
   const style = styleOf(drawing);
 
@@ -117,7 +129,8 @@ function overBody(
       const [a, b] = screen;
       const corner = { x: style.extend ? size.width : Math.max(a.x, b.x), y: b.y };
       const origin = { x: Math.min(a.x, b.x), y: a.y };
-      return nearRectEdge(point, origin, corner, SLOP) || insideRect(point, origin, corner);
+      if (nearRectEdge(point, origin, corner, SLOP)) return true;
+      return !edgesOnly && insideRect(point, origin, corner);
     }
 
     case "trendline":
@@ -142,7 +155,15 @@ function overBody(
       const right = Math.max(entry.x, target.x);
       const top = Math.min(entry.y, target.y, stop.y);
       const bottom = Math.max(entry.y, target.y, stop.y);
-      return insideRect(point, { x: left, y: top }, { x: right, y: bottom });
+
+      if (!edgesOnly) return insideRect(point, { x: left, y: top }, { x: right, y: bottom });
+
+      // The three price levels *are* the box's horizontal edges — target and
+      // stop bound it, entry splits it — so testing them covers the outline
+      // and the line the trade actually turns on. The vertical borders are
+      // already claimed by `positionEdge` above, in both modes.
+      if (point.x < left - SLOP || point.x > right + SLOP) return false;
+      return [entry.y, target.y, stop.y].some((y) => Math.abs(point.y - y) <= SLOP);
     }
   }
 }

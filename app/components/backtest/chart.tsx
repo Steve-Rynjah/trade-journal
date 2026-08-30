@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { TIMEFRAME_SECONDS, type Candle, type Timeframe } from "@/lib/backtest/candles";
 import type { ChartTheme } from "@/lib/backtest/chart-theme";
+import { cursorCss, edgesOnly, type CursorKind } from "@/lib/backtest/cursors";
 import {
   logicalToTime,
   newId,
@@ -38,6 +39,14 @@ type Props = {
   /** The tool armed in the rail, or null when the cursor is just a cursor. */
   activeTool: ToolKind | null;
   onToolUsed: () => void;
+  /**
+   * The pointer mode in force while no tool is armed.
+   *
+   * "arrow" makes a whole shape grabbable. "cross" narrows that to its edges,
+   * lines and handles: the crosshair then reads straight across the inside of
+   * a zone, and a drag from in there pans the chart instead of moving it.
+   */
+  cursorKind: CursorKind;
   drawings: Drawing[];
   onDrawingsChange: (next: Drawing[]) => void;
   selectedId: string | null;
@@ -76,6 +85,7 @@ export function Chart({
   timeframe,
   activeTool,
   onToolUsed,
+  cursorKind,
   drawings,
   onDrawingsChange,
   selectedId,
@@ -99,6 +109,8 @@ export function Chart({
   const didFitRef = useRef(false);
   /** Pointer position while a handle is being dragged, for the guide lines. */
   const guideRef = useRef<Screen | null>(null);
+  /** The drawing lit up under the cursor, so a mode switch knows to clear it. */
+  const hoveredRef = useRef<string | null>(null);
   /** Live theme for the mount-time effect, which binds only once. */
   const themeRef = useRef(theme);
 
@@ -106,11 +118,11 @@ export function Chart({
   // otherwise capture whatever these were on the first render. Written in an
   // effect rather than during render: the handlers only ever read them in
   // response to input, which cannot happen before the commit that sets them.
-  const latest = useRef({ candles, timeframe, activeTool, drawings, selectedId, presets, theme });
+  const latest = useRef({ candles, timeframe, activeTool, cursorKind, drawings, selectedId, presets, theme });
   const callbacks = useRef({ onDrawingsChange, onSelect, onToolUsed, onEdit });
 
   useEffect(() => {
-    latest.current = { candles, timeframe, activeTool, drawings, selectedId, presets, theme };
+    latest.current = { candles, timeframe, activeTool, cursorKind, drawings, selectedId, presets, theme };
     themeRef.current = theme;
     callbacks.current = { onDrawingsChange, onSelect, onToolUsed, onEdit };
   });
@@ -456,9 +468,16 @@ export function Chart({
       const point = toScreen(event);
       if (!layer || !point) return;
 
-      const hit = hitTest(layer, latest.current.drawings, point);
-      setCapturing(hit !== null, cursorFor(hit));
-      sync(null, hit?.drawing.id ?? null);
+      const edges = edgesOnly(latest.current.cursorKind);
+      const hit = hitTest(layer, latest.current.drawings, point, edges);
+      setCapturing(hit !== null, cursorFor(hit, edges));
+
+      // Repainted on every move, not only when the hovered shape changes: the
+      // layer is also redrawn by the replay tick, which paints no highlight,
+      // and a memoised hover would leave the shape under the cursor dark until
+      // the pointer left it and came back.
+      hoveredRef.current = hit?.drawing.id ?? null;
+      sync(null, hoveredRef.current);
     };
 
     const down = (event: PointerEvent) => {
@@ -485,7 +504,12 @@ export function Chart({
         return;
       }
 
-      const hit = hitTest(layer, latest.current.drawings, point);
+      const hit = hitTest(
+        layer,
+        latest.current.drawings,
+        point,
+        edgesOnly(latest.current.cursorKind),
+      );
       if (!hit) {
         callbacks.current.onSelect(null);
         setCapturing(false, "default");
@@ -664,7 +688,15 @@ export function Chart({
       // A click on the price axis is a scale gesture, not a deselection.
       if (point.x > chart.timeScale().width()) return;
 
-      if (!hitTest(layer, latest.current.drawings, point)) callbacks.current.onSelect(null);
+      // A click that lands inside a zone rather than on its edge counts as
+      // empty chart in Cross mode, and clears the selection with it.
+      const hit = hitTest(
+        layer,
+        latest.current.drawings,
+        point,
+        edgesOnly(latest.current.cursorKind),
+      );
+      if (!hit) callbacks.current.onSelect(null);
     };
 
     const doubleClick = (event: MouseEvent) => {
@@ -673,10 +705,12 @@ export function Chart({
       if (!layer || !host_) return;
 
       const rect = host_.getBoundingClientRect();
-      const hit = hitTest(layer, latest.current.drawings, {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      });
+      const hit = hitTest(
+        layer,
+        latest.current.drawings,
+        { x: event.clientX - rect.left, y: event.clientY - rect.top },
+        edgesOnly(latest.current.cursorKind),
+      );
       if (!hit) return;
 
       event.preventDefault();
@@ -734,9 +768,17 @@ export function Chart({
     };
   }, [sync, toAnchor, toScreen, defaultRisk]);
 
-  // Arming a tool should change the cursor immediately, before any movement.
+  // Arming a tool — or switching pointer mode — should change the cursor
+  // immediately, before any movement.
   useEffect(() => {
     const overlay = overlayRef.current;
+    const host = hostRef.current;
+
+    // The pane's own cursor, which is what shows while the overlay is
+    // transparent: that is every moment except a live gesture or a hover over
+    // a grabbable shape.
+    if (host) host.style.cursor = activeTool ? "crosshair" : cursorCss(cursorKind);
+
     if (!overlay) return;
     if (activeTool) {
       overlay.style.pointerEvents = "auto";
@@ -744,8 +786,13 @@ export function Chart({
     } else if (gestureRef.current.mode === "idle") {
       overlay.style.pointerEvents = "none";
       overlay.style.cursor = "default";
+      // Leaving arrow mode with a shape lit up would strand the highlight.
+      if (hoveredRef.current !== null) {
+        hoveredRef.current = null;
+        sync(null, null);
+      }
     }
-  }, [activeTool]);
+  }, [activeTool, cursorKind, sync]);
 
   // ---- keyboard -----------------------------------------------------------
   useEffect(() => {
@@ -819,19 +866,28 @@ const VISIBLE_BARS = 240;
 /** Breathing room to the right of the last bar, in bars. */
 const RIGHT_PADDING_BARS = 12;
 
-/** What the pointer should look like over a given hit. */
-function cursorFor(hit: Hit | null): string {
+/**
+ * What the pointer should look like over a given hit.
+ *
+ * `edges` is the Cross mode, where the arrow carries the whole signal: the
+ * pointer is a crosshair everywhere else, so becoming an arrow is what says
+ * this edge — unlike the fill two pixels away — will answer a click. Leaving
+ * the crosshair up there would have said nothing at all.
+ */
+function cursorFor(hit: Hit | null, edges: boolean): string {
   if (!hit) return "default";
+
+  const position = hit.drawing.kind === "long-position" || hit.drawing.kind === "short-position";
+
+  // The directional grips survive both modes: which way a border is about to
+  // slide is worth more than which mode you are in.
+  if (position && (hit.anchor === 3 || hit.anchor === 4)) return "ew-resize";
+  if (position && (hit.anchor === 1 || hit.anchor === 2)) return "ns-resize";
+
+  if (edges) return "default";
   if (hit.anchor === null) return "move";
 
   // Crosshair over a grab point, never the hand: the hand suggests "click to
   // follow", when what is about to happen is a precise drag.
-  const position = hit.drawing.kind === "long-position" || hit.drawing.kind === "short-position";
-  if (!position) return "crosshair";
-
-  // Entry moves the trade; the price handles slide vertically and the two box
-  // edges slide horizontally, so each says which way it will go.
-  if (hit.anchor === 0) return "crosshair";
-  if (hit.anchor === 3 || hit.anchor === 4) return "ew-resize";
-  return "ns-resize";
+  return "crosshair";
 }

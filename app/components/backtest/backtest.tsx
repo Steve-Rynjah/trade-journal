@@ -19,6 +19,7 @@ import { newId, type Drawing, type ToolKind } from "@/lib/backtest/drawings";
 import { styleFrom, type DrawingSet, type StylePreset } from "@/lib/backtest/sets";
 import type { BacktestSession } from "@/lib/backtest/sessions";
 import { DARK_THEME, loadTheme, saveTheme, type ChartTheme } from "@/lib/backtest/chart-theme";
+import { DEFAULT_CURSOR, loadCursor, saveCursor, type CursorKind } from "@/lib/backtest/cursors";
 import {
   DEFAULT_SESSION_SETTINGS,
   SESSION_KEYS,
@@ -87,6 +88,15 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
 
   const [drawings, setDrawings] = useState<Drawing[]>(session.drawings);
   const [activeTool, setActiveTool] = useState<ToolKind | null>(null);
+  /**
+   * Pointer mode, remembered in the browser the way the theme is.
+   *
+   * Server-rendered as the default: it only ever reaches the chart through an
+   * effect, so a different value on the client cannot mismatch the markup.
+   */
+  const [cursorKind, setCursorKind] = useState<CursorKind>(() =>
+    typeof window === "undefined" ? DEFAULT_CURSOR : loadCursor(),
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -442,6 +452,14 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
 
       <div className="flex min-h-0 flex-1">
         <ToolRail
+          cursorKind={cursorKind}
+          onCursorChange={(kind) => {
+            setCursorKind(kind);
+            saveCursor(kind);
+            // Choosing a pointer is a way out of a half-armed tool, so the
+            // rail does not stay lit on a tool the next click will not use.
+            setActiveTool(null);
+          }}
           active={activeTool}
           onPick={setActiveTool}
           onChartSettings={() => setThemeOpen((open) => !open)}
@@ -466,6 +484,7 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
               timeframe={timeframe}
               activeTool={activeTool}
               onToolUsed={() => setActiveTool(null)}
+              cursorKind={cursorKind}
               drawings={drawings}
               onDrawingsChange={setDrawings}
               selectedId={selectedId}
