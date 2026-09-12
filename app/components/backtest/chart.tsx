@@ -48,7 +48,12 @@ type Props = {
    */
   cursorKind: CursorKind;
   drawings: Drawing[];
-  onDrawingsChange: (next: Drawing[]) => void;
+  /**
+   * `coalesceKey` groups a run of changes into one undo step. A drag reports a
+   * new shape on every pointer move; passing the same key throughout means
+   * Cmd+Z rewinds the whole gesture rather than one pixel of it.
+   */
+  onDrawingsChange: (next: Drawing[], coalesceKey?: string) => void;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   /** Double-click opens the style editor for that drawing. */
@@ -78,6 +83,8 @@ type Gesture =
       origin: Anchor[];
       from: Anchor;
       fromScreen: Screen;
+      /** Unique to this drag, so the next one starts a fresh undo step. */
+      key: string;
     };
 
 export function Chart({
@@ -524,6 +531,7 @@ export function Chart({
         origin: hit.drawing.points.map((p) => ({ ...p })),
         from: anchor,
         fromScreen: point,
+        key: `move:${hit.drawing.id}:${event.timeStamp}`,
       };
       overlay.setPointerCapture(event.pointerId);
     };
@@ -629,7 +637,7 @@ export function Chart({
         return { ...drawing, points };
       });
 
-      callbacks.current.onDrawingsChange(next);
+      callbacks.current.onDrawingsChange(next, gesture.key);
     };
 
     const up = (event: PointerEvent) => {

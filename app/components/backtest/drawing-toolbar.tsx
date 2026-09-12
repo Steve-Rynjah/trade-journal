@@ -32,7 +32,8 @@ export function DrawingToolbar({
   sets: DrawingSet[];
   timeframe: Timeframe;
   allDrawings: Drawing[];
-  onChange: (next: Drawing) => void;
+  /** The key folds a run of edits — a slider drag — into one undo step. */
+  onChange: (next: Drawing, coalesceKey?: string) => void;
   onSettings: () => void;
   onDelete: () => void;
   onSets: (result: SetsResult) => void;
@@ -81,7 +82,12 @@ export function DrawingToolbar({
 
           <select
             value={text.fontSize}
-            onChange={(event) => onChange({ ...drawing, fontSize: Number(event.target.value) })}
+            onChange={(event) =>
+              onChange(
+                { ...drawing, fontSize: Number(event.target.value) },
+                `style:${drawing.id}:fontSize`,
+              )
+            }
             aria-label="Font size"
             title="Font size"
             className="mx-0.5 cursor-pointer rounded-md border-0 bg-transparent py-1 text-theme-xs tabular-nums text-gray-600 outline-none dark:text-gray-300"
@@ -102,7 +108,7 @@ export function DrawingToolbar({
             {colourOpen ? (
               <ColourPicker
                 value={text.line}
-                onChange={(color) => onChange({ ...drawing, color })}
+                onChange={(color) => onChange({ ...drawing, color }, `style:${drawing.id}:color`)}
                 onClose={() => setColourOpen(false)}
               />
             ) : null}

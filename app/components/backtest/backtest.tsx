@@ -16,6 +16,7 @@ import {
   type Timeframe,
 } from "@/lib/backtest/candles";
 import { newId, type Drawing, type ToolKind } from "@/lib/backtest/drawings";
+import { useHistory } from "@/lib/backtest/history";
 import { styleFrom, type DrawingSet, type StylePreset } from "@/lib/backtest/sets";
 import type { BacktestSession } from "@/lib/backtest/sessions";
 import { DARK_THEME, loadTheme, saveTheme, type ChartTheme } from "@/lib/backtest/chart-theme";
@@ -87,7 +88,22 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
   const [loadError, setLoadError] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>(session.timeframe);
 
-  const [drawings, setDrawings] = useState<Drawing[]>(session.drawings);
+  /**
+   * Markup, with an undo stack behind it.
+   *
+   * `setDrawings` is the history's commit, so every existing call site — the
+   * chart's drags, the toolbar, the style editor, Clear All — becomes an
+   * undoable step for free. The optional second argument groups a continuous
+   * gesture into one step; see `useHistory`.
+   */
+  const {
+    value: drawings,
+    commit: setDrawings,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<Drawing[]>(session.drawings);
   const [activeTool, setActiveTool] = useState<ToolKind | null>(null);
   /**
    * Pointer mode, remembered in the browser the way the theme is.
@@ -330,6 +346,46 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
   }, [cursor, stride, moveCursor]);
 
   /**
+   * Cmd+Z / Ctrl+Z walks the markup back, Cmd+Shift+Z (or Ctrl+Y) forward.
+   *
+   * A drawing deleted by mistake is the whole point of this: Delete is one
+   * keystroke away from the arrow keys that drive the replay, and until now it
+   * was final. Only the markup has a history — the replay cursor, the
+   * timeframe and the theme are not edits, and rolling them back under the same
+   * key would make Cmd+Z mean something different every time it was pressed.
+   *
+   * Fields keep their own native undo: while the caret is in a text box the
+   * browser's stack is the one the user means, so the handler stands aside.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.metaKey && !event.ctrlKey) return;
+
+      const key = event.key.toLowerCase();
+      const isUndo = key === "z" && !event.shiftKey;
+      const isRedo = (key === "z" && event.shiftKey) || (key === "y" && !event.metaKey);
+      if (!isUndo && !isRedo) return;
+
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      if (isUndo) undo();
+      else redo();
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
+  /**
    * A digit typed over the chart opens the interval box, seeded with it.
    *
    * Digits only, the way TradingView does it: a bare `H` is not the start of an
@@ -365,6 +421,9 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
   const shapeSets = useMemo(() => sets.filter((set) => set.kind === null), [sets]);
   const styleSets = useMemo(() => sets.filter((set) => set.kind !== null), [sets]);
 
+  // Derived, not reconciled: after an undo that removes a shape the id can
+  // point at nothing, and both panels close on their own. Keeping the id is
+  // what makes the matching redo bring the drawing back still selected.
   const editing = drawings.find((drawing) => drawing.id === editingId) ?? null;
   const selected = drawings.find((drawing) => drawing.id === selectedId) ?? null;
   const startIndex = base ? indexAtTime(base, session.startTime) : 0;
@@ -506,6 +565,10 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
             setEditingId(null);
           }}
           canClear={drawings.length > 0}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
 
         <div className="relative min-w-0 flex-1">
@@ -538,8 +601,8 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
               sets={shapeSets}
               timeframe={timeframe}
               allDrawings={drawings}
-              onChange={(next) =>
-                setDrawings((current) => current.map((d) => (d.id === next.id ? next : d)))
+              onChange={(next, key) =>
+                setDrawings((current) => current.map((d) => (d.id === next.id ? next : d)), key)
               }
               onSettings={() => setEditingId(selected.id)}
               onDelete={() => {
@@ -619,8 +682,8 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
           {editing ? (
             <StyleEditor
               drawing={editing}
-              onChange={(next) =>
-                setDrawings((current) => current.map((d) => (d.id === next.id ? next : d)))
+              onChange={(next, key) =>
+                setDrawings((current) => current.map((d) => (d.id === next.id ? next : d)), key)
               }
               onDelete={() => {
                 setDrawings((current) => current.filter((d) => d.id !== editing.id));

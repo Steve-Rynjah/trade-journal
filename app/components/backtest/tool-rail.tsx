@@ -97,6 +97,23 @@ const TOOLS: { kind: ToolKind; icon: React.ReactNode }[] = [
   },
 ];
 
+/** The neutral rail button: undo, redo, and anything else that is an action
+ *  rather than a mode. Clear All keeps its own red hover. */
+const RAIL_ACTION =
+  "flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:pointer-events-none disabled:opacity-30 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-100";
+
+/**
+ * Which modifier to name in a tooltip.
+ *
+ * Only ever read in the browser, and only for a label, so a wrong guess on a
+ * server render cannot mismatch anything the user sees: the rail renders on
+ * the client alongside the chart.
+ */
+function isApple(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+}
+
 /** The open circles TradingView uses to show a tool's grab points. */
 function Dots({ points }: { points: [number, number][] }) {
   return (
@@ -115,6 +132,10 @@ export function ToolRail({
   onPick,
   onClear,
   canClear,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }: {
   /** Which pointer mode is in force while no drawing tool is armed. */
   cursorKind: CursorKind;
@@ -123,7 +144,13 @@ export function ToolRail({
   onPick: (kind: ToolKind | null) => void;
   onClear: () => void;
   canClear: boolean;
+  /** The markup history. Cmd+Z drives the same two functions. */
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }) {
+  const meta = isApple() ? "\u2318" : "Ctrl+";
   return (
     <div className="relative flex w-[52px] shrink-0 flex-col items-center gap-1 border-r border-gray-200 py-2 dark:border-gray-800">
       <CursorGroup kind={cursorKind} onChange={onCursorChange} armed={active === null} />
@@ -163,6 +190,34 @@ export function ToolRail({
       })}
 
       <div className="my-1 h-px w-6 bg-gray-200 dark:bg-gray-800" />
+
+      <button
+        type="button"
+        title={`Undo (${meta}Z)`}
+        aria-label="Undo"
+        onClick={onUndo}
+        disabled={!canUndo}
+        className={RAIL_ACTION}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 9h10.5a4.5 4.5 0 010 9H9" />
+          <path d="M7.5 5.5L4 9l3.5 3.5" />
+        </svg>
+      </button>
+
+      <button
+        type="button"
+        title={`Redo (${meta}\u21e7Z)`}
+        aria-label="Redo"
+        onClick={onRedo}
+        disabled={!canRedo}
+        className={RAIL_ACTION}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M20 9H9.5a4.5 4.5 0 000 9H15" />
+          <path d="M16.5 5.5L20 9l-3.5 3.5" />
+        </svg>
+      </button>
 
       <button
         type="button"

@@ -20,7 +20,9 @@ export function StyleEditor({
   onClose,
 }: {
   drawing: Drawing;
-  onChange: (next: Drawing) => void;
+  /** The second argument groups a run of edits to one field into a single
+   *  undo step — dragging the opacity slider is one change, not eighty. */
+  onChange: (next: Drawing, coalesceKey?: string) => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -47,7 +49,8 @@ export function StyleEditor({
     };
   }, [onClose]);
 
-  const set = (patch: Partial<Drawing>) => onChange({ ...drawing, ...patch });
+  const set = (patch: Partial<Drawing>) =>
+    onChange({ ...drawing, ...patch }, `style:${drawing.id}:${Object.keys(patch).join()}`);
   const isPosition = drawing.kind === "long-position" || drawing.kind === "short-position";
   const isRectangle = drawing.kind === "rectangle";
   const isLine = drawing.kind === "trendline";
