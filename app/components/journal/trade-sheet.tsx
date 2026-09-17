@@ -48,7 +48,7 @@ export type Draft = {
   reward: string;
   result: TradeResult | "";
   remarks: string;
-  /** Only ever set while the result is LOSE. */
+  /** The chart for the row, won or lost. */
   screenshot: File | null;
 };
 
@@ -275,14 +275,7 @@ function DraftCells({
           label="Result"
           value={draft.result}
           options={RESULTS}
-          onChange={(result) =>
-            // A trade that is no longer a loss cannot carry a chart.
-            onChange({
-              ...draft,
-              result,
-              screenshot: result === "LOSE" ? draft.screenshot : null,
-            })
-          }
+          onChange={(result) => onChange({ ...draft, result })}
           tone={resultTone}
         />
       </td>
@@ -294,7 +287,7 @@ function DraftCells({
         />
       </td>
       <td className={`${TD} cell-rule`}>
-        {draft.result === "LOSE" ? (
+        {draft.result ? (
           <button
             type="button"
             onClick={onPickFile}
@@ -565,7 +558,6 @@ export function TradeSheet({
                     )}
                   </td>
 
-                  {/* Charts are kept for losses only — the DB enforces it too. */}
                   <td className={`${TD} cell-rule`}>
                     {trade.screenshotUrl ? (
                       <button
@@ -586,7 +578,7 @@ export function TradeSheet({
                           className="h-full w-full object-cover"
                         />
                       </button>
-                    ) : trade.result === "LOSE" ? (
+                    ) : (
                       <button
                         type="button"
                         disabled={working}
@@ -598,8 +590,6 @@ export function TradeSheet({
                       >
                         + Image
                       </button>
-                    ) : (
-                      <span className="text-gray-300 dark:text-gray-600">—</span>
                     )}
                   </td>
 

@@ -5,8 +5,8 @@ import { SCREENSHOT_BUCKET, SIGNED_URL_TTL_SECONDS } from "./supabase/config";
 import { rowToTrade, type TradeRow, type TradeWithScreenshot } from "./types";
 
 /**
- * Every trade, newest first, each losing trade carrying a freshly signed
- * screenshot URL.
+ * Every trade, newest first, each one that has a chart carrying a freshly
+ * signed screenshot URL.
  *
  * The bucket is private, so URLs are minted per render rather than stored. They
  * expire an hour later, which is well past the life of a page view.

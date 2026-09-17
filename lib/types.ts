@@ -27,7 +27,7 @@ export type Trade = {
   ratio: string;
   result: TradeResult;
   remarks: string | null;
-  /** Object path in the screenshots bucket. Only ever set on a LOSE. */
+  /** Object path in the screenshots bucket. Set on any trade with a chart. */
   screenshotPath: string | null;
   createdAt: string;
 };

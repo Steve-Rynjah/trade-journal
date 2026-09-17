@@ -155,15 +155,6 @@ export async function createTrade(
     return { status: "error", message: fileError, fieldErrors: { screenshot: fileError } };
   }
 
-  // The DB enforces this too; catching it here gives a better message.
-  if (file && values.result !== "LOSE") {
-    return {
-      status: "error",
-      message: "Screenshots are only kept for losing trades.",
-      fieldErrors: { screenshot: "Only losing trades take a screenshot." },
-    };
-  }
-
   const user = await currentUser();
   if (!user) return SIGNED_OUT;
 
@@ -225,14 +216,6 @@ export async function updateTrade(
     return { status: "error", message: fileError, fieldErrors: { screenshot: fileError } };
   }
 
-  if (file && values.result !== "LOSE") {
-    return {
-      status: "error",
-      message: "Screenshots are only kept for losing trades.",
-      fieldErrors: { screenshot: "Only losing trades take a screenshot." },
-    };
-  }
-
   const user = await currentUser();
   if (!user) return SIGNED_OUT;
 
@@ -263,10 +246,6 @@ export async function updateTrade(
       }
       screenshotPath = path;
     }
-
-    // A trade that is no longer a loss must not keep a screenshot — the DB
-    // constraint would reject the row anyway.
-    if (values.result !== "LOSE") screenshotPath = null;
 
     const { error } = await supabase
       .from("trades")
@@ -332,7 +311,7 @@ export async function deleteTrade(id: string): Promise<FormState> {
 }
 
 /**
- * Attach (or replace) the chart for a losing trade.
+ * Attach (or replace) the chart for a trade, won or lost.
  *
  * Split out from `updateTrade` because the journal uploads straight from the
  * row's file input — there is no form around it to carry the other fields.
@@ -353,15 +332,12 @@ export async function setScreenshot(formData: FormData): Promise<FormState> {
 
     const { data: existing, error: readError } = await supabase
       .from("trades")
-      .select("result, screenshot_path")
+      .select("screenshot_path")
       .eq("id", id)
       .single();
 
     if (readError) {
       return { status: "error", message: `Could not load trade: ${readError.message}` };
-    }
-    if (existing?.result !== "LOSE") {
-      return { status: "error", message: "Charts are only kept for losing trades." };
     }
 
     const path = screenshotPathFor(user, file);
