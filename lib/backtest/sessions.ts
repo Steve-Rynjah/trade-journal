@@ -10,6 +10,8 @@ import type { Drawing } from "./drawings";
 
 export type BacktestSession = {
   id: string;
+  /** Optional label; the symbol stands in when it is empty. */
+  name: string | null;
   symbol: string;
   /** Seconds since the epoch — the same unit the candles use. */
   startTime: number;

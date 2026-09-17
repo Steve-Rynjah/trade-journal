@@ -449,7 +449,7 @@ export function Backtest({ session, sets: initialSets }: { session: BacktestSess
         </Link>
 
         <span className="text-theme-sm font-semibold text-gray-900 dark:text-white">
-          {session.symbol}
+          {session.name ?? session.symbol}
         </span>
         <div className="ml-2 flex items-center gap-0.5">
           {TIMEFRAMES.map((tf) => {

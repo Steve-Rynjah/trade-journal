@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 
 import { createSession, deleteSession, type SessionsResult } from "@/app/backtest-actions";
 import {
@@ -115,9 +116,12 @@ function SessionCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-theme-sm font-semibold text-gray-900 dark:text-white">
-              {session.symbol}
+            <span className="truncate text-theme-sm font-semibold text-gray-900 dark:text-white">
+              {session.name ?? session.symbol}
             </span>
+            {session.name ? (
+              <span className="text-theme-xs text-gray-400">{session.symbol}</span>
+            ) : null}
             <span className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
               {advanced} day{advanced === 1 ? "" : "s"} in
             </span>
@@ -136,7 +140,7 @@ function SessionCard({
       <button
         type="button"
         disabled={pending}
-        aria-label={`Delete the ${session.symbol} session`}
+        aria-label={`Delete the ${session.name ?? session.symbol} session`}
         onClick={() => startTransition(async () => onDeleted(await deleteSession(session.id)))}
         className="absolute right-3 top-3 rounded-md p-1.5 text-gray-300 opacity-0 transition hover:bg-error-50 hover:text-error-600 focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40 dark:text-gray-600 dark:hover:bg-error-500/15 dark:hover:text-error-400"
       >
@@ -159,17 +163,26 @@ function CreateDialog({
 }) {
   // Somewhere with plenty of history behind it and plenty of chart ahead.
   const [day, setDay] = useState("2026-02-02");
+  const [name, setName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4">
+  // Portalled to <body>: an ancestor in the app shell creates a containing
+  // block for `fixed`, which pinned the dialog under the header instead of
+  // centring it in the viewport.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/50 p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !pending) onClose();
+      }}
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
           setMessage(null);
           startTransition(async () => {
-            const result = await createSession(day);
+            const result = await createSession(day, name);
             if (result.ok) onCreated(result.session);
             else {
               setMessage(result.error);
@@ -183,6 +196,21 @@ function CreateDialog({
         <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
           The chart opens on this date at 4h, with everything after it hidden.
         </p>
+
+        <label className="mt-4 block">
+          <span className="text-theme-xs font-medium text-gray-600 dark:text-gray-300">
+            Name
+          </span>
+          <input
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="e.g. London breakouts, Feb"
+            maxLength={80}
+            autoFocus
+            className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-brand-400 dark:border-gray-800 dark:bg-white/5 dark:text-white"
+          />
+        </label>
 
         <label className="mt-4 block">
           <span className="text-theme-xs font-medium text-gray-600 dark:text-gray-300">
@@ -225,6 +253,7 @@ function CreateDialog({
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }

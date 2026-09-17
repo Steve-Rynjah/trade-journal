@@ -184,10 +184,11 @@ export type SessionsResult =
 export type SessionResult = { ok: true; session: BacktestSession } | { ok: false; error: string };
 
 const SESSION_COLUMNS =
-  "id, symbol, start_time, cursor_time, timeframe, step_seconds, balance, drawings, updated_at";
+  "id, name, symbol, start_time, cursor_time, timeframe, step_seconds, balance, drawings, updated_at";
 
 type SessionRow = {
   id: string;
+  name: string | null;
   symbol: string;
   start_time: string;
   cursor_time: string;
@@ -201,6 +202,7 @@ type SessionRow = {
 function toSession(row: SessionRow): BacktestSession {
   return {
     id: row.id,
+    name: row.name,
     symbol: row.symbol,
     startTime: Math.floor(new Date(row.start_time).getTime() / 1000),
     cursorTime: Math.floor(new Date(row.cursor_time).getTime() / 1000),
@@ -252,7 +254,7 @@ export async function loadSession(id: string): Promise<SessionResult> {
  * `balance` is seeded from the default rather than asked for. Nothing trades
  * against it yet, and a number you cannot spend is a question not worth asking.
  */
-export async function createSession(startDay: string): Promise<SessionResult> {
+export async function createSession(startDay: string, name = ""): Promise<SessionResult> {
   const user = await currentUser();
   if (!user) return { ok: false, error: "Sign in to use backtest sessions." };
 
@@ -265,6 +267,10 @@ export async function createSession(startDay: string): Promise<SessionResult> {
       error: `Pick a date between ${DATA_FIRST_DAY} and ${DATA_LAST_DAY} — that is the range the candles cover.`,
     };
   }
+  const trimmedName = name.trim();
+  if (trimmedName.length > 80) {
+    return { ok: false, error: "Keep the session name to 80 characters or fewer." };
+  }
   const startedAt = new Date(`${startDay}T00:00:00Z`).toISOString();
 
   const supabase = await createClient();
@@ -272,6 +278,7 @@ export async function createSession(startDay: string): Promise<SessionResult> {
     .from("backtest_sessions")
     .insert({
       user_id: user.id,
+      name: trimmedName || null,
       symbol: SYMBOL,
       start_time: startedAt,
       cursor_time: startedAt,
