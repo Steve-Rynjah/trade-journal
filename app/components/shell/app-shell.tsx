@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { signOut } from "@/app/auth-actions";
 import { SetupNotice } from "../setup-notice";
 import { AppData } from "./app-data";
+import { ResetTab } from "./reset-tab";
 import { ThemeToggle } from "./theme-toggle";
 import type { LoadResult } from "@/lib/page-data";
 
@@ -76,6 +77,17 @@ const NAV = [
         <circle cx="8.6" cy="17.4" r="1.25" />
         <circle cx="12" cy="17.4" r="1.25" />
         <circle cx="15.4" cy="17.4" r="1.25" />
+      </>
+    ),
+  },
+  {
+    href: "/ai-report",
+    label: "Ai Report",
+    hint: "What the sheet says",
+    icon: (
+      <>
+        <path d="M12 3l1.9 4.9 4.9 1.9-4.9 1.9L12 16.6l-1.9-4.9L5.2 9.8l4.9-1.9L12 3z" />
+        <path d="M18.6 15.4l.75 1.95 1.95.75-1.95.75-.75 1.95-.75-1.95-1.95-.75 1.95-.75.75-1.95z" />
       </>
     ),
   },
@@ -175,6 +187,12 @@ export function AppShell({
                 </li>
               );
             })}
+
+            {/* Not a route, so it sits apart from the four above it: pressing
+                it asks before it empties the account. */}
+            <li className="mt-1 border-t border-gray-200 pt-1 dark:border-gray-800">
+              <ResetTab onOpen={() => setMenuOpen(false)} />
+            </li>
           </ul>
         </nav>
       </aside>
