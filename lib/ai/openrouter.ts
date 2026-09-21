@@ -42,7 +42,24 @@ const FALLBACKS = (process.env.OPENROUTER_FALLBACKS ?? DEFAULT_FALLBACKS.join(",
 /** The primary first: OpenRouter tries them in order and stops at the first that answers. */
 const ROUTE = [MODEL, ...FALLBACKS].slice(0, MAX_ROUTE);
 
-export const hasOpenRouterKey = Boolean(process.env.OPENROUTER_API_KEY);
+/**
+ * Read per call, not once at import: a module-level constant is fixed for the
+ * life of the server instance, so a key added to the deployment afterwards
+ * would stay invisible until the next cold start.
+ */
+export function hasOpenRouterKey(): boolean {
+  return Boolean(process.env.OPENROUTER_API_KEY);
+}
+
+/**
+ * Where the key is meant to be set. `.env.local` is never deployed — it is
+ * gitignored — so on Vercel the same advice would send you to the wrong place.
+ */
+const ENV_HOME = process.env.VERCEL
+  ? "the Vercel project's Environment Variables (then redeploy)"
+  : ".env.local (then restart the dev server)";
+
+export const MISSING_KEY_ERROR = `No OPENROUTER_API_KEY set — add it to ${ENV_HOME}.`;
 
 export type ChatResult =
   | { ok: true; content: string; model: string }
@@ -69,7 +86,7 @@ export async function chat(
     return {
       ok: false,
       retryable: false,
-      error: "No OPENROUTER_API_KEY in .env.local — add one and restart the dev server.",
+      error: MISSING_KEY_ERROR,
     };
   }
 
@@ -101,7 +118,9 @@ async function once(
         "Content-Type": "application/json",
         // Optional on OpenRouter, but they are what a key's usage is grouped
         // under on the dashboard — worth setting while there is one app using it.
-        "HTTP-Referer": "http://localhost:3000",
+        "HTTP-Referer": process.env.VERCEL_PROJECT_PRODUCTION_URL
+          ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+          : "http://localhost:3000",
         "X-Title": "Trade Journal",
       },
       body: JSON.stringify({
@@ -176,11 +195,11 @@ async function once(
 function describe(code: number | string, message: string): string {
   if (code === 429) {
     return ROUTE.length > 1
-      ? `Every free model tried is busy right now — they share one upstream pool. Try again in a moment, or set OPENROUTER_MODEL in .env.local to a model with capacity.`
-      : `${MODEL} is busy — free models share one upstream pool. Try again in a moment, or set OPENROUTER_MODEL in .env.local to a model with capacity.`;
+      ? `Every free model tried is busy right now — they share one upstream pool. Try again in a moment, or set OPENROUTER_MODEL in ${ENV_HOME} to a model with capacity.`
+      : `${MODEL} is busy — free models share one upstream pool. Try again in a moment, or set OPENROUTER_MODEL in ${ENV_HOME} to a model with capacity.`;
   }
   if (code === 401 || code === 403) {
-    return "OpenRouter rejected the key. Check OPENROUTER_API_KEY in .env.local.";
+    return `OpenRouter rejected the key. Check OPENROUTER_API_KEY in ${ENV_HOME}.`;
   }
   return message;
 }

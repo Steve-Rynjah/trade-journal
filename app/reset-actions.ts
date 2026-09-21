@@ -5,65 +5,61 @@ import { revalidatePath } from "next/cache";
 import { currentUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SCREENSHOT_BUCKET } from "@/lib/supabase/config";
+import { isSheetVersion, versionLabel } from "@/lib/stats";
 
 export type ResetResult =
-  | { ok: true; trades: number; sessions: number; sets: number; screenshots: number }
+  | { ok: true; version: number; trades: number; screenshots: number }
   | { ok: false; error: string };
 
-/**
- * Objects are stored under `<user_id>/<uuid>.<ext>`, so the whole of one
- * person's uploads is one folder listing. Asked for in pages because the API
- * caps a listing at a hundred objects and silently returns the first page.
- */
+/** The storage API takes removals in batches; a hundred keeps each request small. */
 const PAGE = 100;
 
-async function ownScreenshotPaths(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-): Promise<string[]> {
-  const paths: string[] = [];
-
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabase.storage
-      .from(SCREENSHOT_BUCKET)
-      .list(userId, { limit: PAGE, offset });
-
-    // A listing that fails is not worth failing the reset over — the rows are
-    // what the app reads, and an orphaned file shows up nowhere.
-    if (error || !data || data.length === 0) break;
-
-    for (const entry of data) paths.push(`${userId}/${entry.name}`);
-    if (data.length < PAGE) break;
-  }
-
-  return paths;
-}
-
 /**
- * Empties the journal: every trade, every backtest session, every saved drawing
- * set and style preset, and every screenshot uploaded along the way.
+ * Empties one version of the journal: every trade logged on that version's
+ * sheets, whatever the month, and the screenshots attached to them.
+ *
+ * Backtest sessions and saved drawings are deliberately left alone — this is
+ * the journal's reset, not the replay's. Screenshots are removed by the paths
+ * the deleted rows point at rather than by listing the user's folder, so a
+ * file belonging to another version is never touched.
  *
  * Scoped to the signed-in user by an explicit `user_id` filter rather than left
- * to RLS. Both hold, but PostgREST rejects an unfiltered DELETE outright, and
- * saying whose data this is keeps the blast radius visible in the code rather
- * than only in a policy in another file.
+ * to RLS. Both hold, but saying whose data this is keeps the blast radius
+ * visible in the code rather than only in a policy in another file.
  */
-export async function resetAllData(): Promise<ResetResult> {
+export async function resetVersion(version: number): Promise<ResetResult> {
+  if (!isSheetVersion(version)) {
+    return { ok: false, error: "That is not a version." };
+  }
+
   const user = await currentUser();
   if (!user) {
     return { ok: false, error: "Your session has expired. Sign in again." };
   }
 
+  const label = versionLabel(version);
+
   try {
     const supabase = await createClient();
 
-    // Files first: a row deleted before its file is an orphan nothing points
-    // at, whereas a file deleted before its row is a trade with a broken
-    // screenshot for the fraction of a second before the row goes too.
-    const paths = await ownScreenshotPaths(supabase, user.id);
+    const { data: attached, error: readError } = await supabase
+      .from("trades")
+      .select("screenshot_path")
+      .eq("user_id", user.id)
+      .eq("version", version)
+      .not("screenshot_path", "is", null);
+
+    if (readError) {
+      return { ok: false, error: `Could not read ${label} trades: ${readError.message}` };
+    }
+
+    // Files first: a row deleted before its file leaves an orphan nothing
+    // points at, whereas the reverse is a broken screenshot for a moment.
+    const paths = (attached ?? [])
+      .map((row) => row.screenshot_path as string | null)
+      .filter((path): path is string => Boolean(path));
+
     let screenshots = 0;
-    // Removed a page at a time for the same reason they are listed that way:
-    // one request per hundred objects, rather than one request of unknown size.
     for (let at = 0; at < paths.length; at += PAGE) {
       const { data, error } = await supabase.storage
         .from(SCREENSHOT_BUCKET)
@@ -74,36 +70,21 @@ export async function resetAllData(): Promise<ResetResult> {
       screenshots += data?.length ?? 0;
     }
 
-    const tables = [
-      { name: "trades", label: "trades" },
-      { name: "backtest_sessions", label: "backtest sessions" },
-      { name: "backtest_drawing_sets", label: "saved drawings" },
-    ] as const;
+    const { data, error } = await supabase
+      .from("trades")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("version", version)
+      .select("id");
 
-    const counts: number[] = [];
-    for (const table of tables) {
-      const { data, error } = await supabase
-        .from(table.name)
-        .delete()
-        .eq("user_id", user.id)
-        .select("id");
-
-      if (error) {
-        return { ok: false, error: `Could not clear ${table.label}: ${error.message}` };
-      }
-      counts.push(data?.length ?? 0);
+    if (error) {
+      return { ok: false, error: `Could not clear ${label} trades: ${error.message}` };
     }
 
     // The trades read lives in the (app) layout, so the whole tree is stale.
     revalidatePath("/", "layout");
 
-    return {
-      ok: true,
-      trades: counts[0],
-      sessions: counts[1],
-      sets: counts[2],
-      screenshots,
-    };
+    return { ok: true, version, trades: data?.length ?? 0, screenshots };
   } catch (error) {
     return {
       ok: false,

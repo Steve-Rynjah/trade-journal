@@ -189,9 +189,12 @@ export function AppShell({
             })}
 
             {/* Not a route, so it sits apart from the four above it: pressing
-                it asks before it empties the account. */}
+                it asks which version to empty before it deletes anything. */}
             <li className="mt-1 border-t border-gray-200 pt-1 dark:border-gray-800">
-              <ResetTab onOpen={() => setMenuOpen(false)} />
+              <ResetTab
+                trades={result.ok ? result.trades : []}
+                onOpen={() => setMenuOpen(false)}
+              />
             </li>
           </ul>
         </nav>

@@ -4,17 +4,20 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
-import { resetAllData, type ResetResult } from "@/app/reset-actions";
+import { resetVersion, type ResetResult } from "@/app/reset-actions";
+import { SelectMenu, type MenuOption } from "@/app/components/select-menu";
+import { SHEET_VERSIONS, versionLabel } from "@/lib/stats";
+import type { Trade } from "@/lib/types";
 
 /**
  * The last item in the sidebar, and the only one that is not a place.
  *
  * A tab rather than a button tucked into a settings page because that is what
  * was asked for — but it is styled apart from the four routes above it, and it
- * never navigates: it asks first, in the middle of the screen, and only then
- * throws everything away.
+ * never navigates: it asks which version's trades to throw away, in the middle
+ * of the screen, and only then deletes them. Backtest data is never touched.
  */
-export function ResetTab({ onOpen }: { onOpen?: () => void }) {
+export function ResetTab({ trades, onOpen }: { trades: Trade[]; onOpen?: () => void }) {
   const [asking, setAsking] = useState(false);
 
   return (
@@ -49,14 +52,40 @@ export function ResetTab({ onOpen }: { onOpen?: () => void }) {
         Reset
       </button>
 
-      {asking ? <ResetDialog onClose={() => setAsking(false)} /> : null}
+      {asking ? <ResetDialog trades={trades} onClose={() => setAsking(false)} /> : null}
     </>
   );
 }
 
-function ResetDialog({ onClose }: { onClose: () => void }) {
+function ResetDialog({ trades, onClose }: { trades: Trade[]; onClose: () => void }) {
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<ResetResult | null>(null);
+
+  // Counted once on open: after the delete the refreshed list would say 0,
+  // which is true but would overwrite the choice the summary describes.
+  const [counts] = useState(() => {
+    const byVersion = new Map<number, number>();
+    for (const trade of trades) {
+      byVersion.set(trade.version, (byVersion.get(trade.version) ?? 0) + 1);
+    }
+    return byVersion;
+  });
+
+  // Opens on the first version that has something in it, so the default
+  // choice is never a no-op.
+  const [version, setVersion] = useState<number>(
+    () => SHEET_VERSIONS.find((value) => (counts.get(value) ?? 0) > 0) ?? SHEET_VERSIONS[0],
+  );
+  const selected = counts.get(version) ?? 0;
+
+  const options: MenuOption<number>[] = SHEET_VERSIONS.map((value) => {
+    const count = counts.get(value) ?? 0;
+    return {
+      value,
+      label: versionLabel(value),
+      hint: count === 0 ? "empty" : `${count} ${count === 1 ? "trade" : "trades"}`,
+    };
+  });
   // Cancel takes the focus, not the confirm — a stray Enter on a dialog that
   // erases everything should do nothing.
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -80,7 +109,7 @@ function ResetDialog({ onClose }: { onClose: () => void }) {
   function confirm() {
     setResult(null);
     startTransition(async () => {
-      const next = await resetAllData();
+      const next = await resetVersion(version);
       setResult(next);
       // The server action already revalidated the layout; this pushes the fresh
       // tree into the client router so the tabs behind the dialog empty out.
@@ -130,7 +159,7 @@ function ResetDialog({ onClose }: { onClose: () => void }) {
           id="reset-title"
           className="mt-4 text-theme-xl font-semibold text-gray-900 dark:text-white"
         >
-          {done ? "Everything cleared" : "Reset all data?"}
+          {done ? `${versionLabel(version)} cleared` : "Reset trade data?"}
         </h2>
 
         <p id="reset-body" className="mt-2 text-theme-sm text-gray-500 dark:text-gray-400">
@@ -138,11 +167,30 @@ function ResetDialog({ onClose }: { onClose: () => void }) {
             summarise(result)
           ) : (
             <>
-              This deletes every trade, screenshot, backtest session and saved
-              drawing on this account. It cannot be undone.
+              Pick a version. Every trade logged on it, in every month, is
+              deleted along with its screenshots. Backtest sessions are not
+              touched. It cannot be undone.
             </>
           )}
         </p>
+
+        {done ? null : (
+          <div className="mt-4 flex items-center justify-center gap-3">
+            <SelectMenu
+              label="Version to delete"
+              value={version}
+              options={options}
+              onChange={(next) => {
+                setVersion(next);
+                setResult(null);
+              }}
+              widthClass="w-48"
+            />
+            <span className="tnum text-theme-sm text-gray-500 dark:text-gray-400">
+              {selected} {selected === 1 ? "trade" : "trades"}
+            </span>
+          </div>
+        )}
 
         {error ? (
           <p
@@ -176,10 +224,10 @@ function ResetDialog({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 onClick={confirm}
-                disabled={pending}
+                disabled={pending || selected === 0}
                 className="inline-flex min-w-[6rem] items-center justify-center rounded-lg bg-error-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs transition-colors hover:bg-error-600 disabled:pointer-events-none disabled:opacity-50"
               >
-                {pending ? "Clearing…" : "Yes"}
+                {pending ? "Clearing…" : `Delete ${versionLabel(version)}`}
               </button>
             </>
           )}
@@ -195,12 +243,10 @@ function summarise(result: Extract<ResetResult, { ok: true }>): string {
   const parts = [
     plural(result.trades, "trade"),
     plural(result.screenshots, "screenshot"),
-    plural(result.sessions, "backtest session"),
-    plural(result.sets, "saved drawing"),
   ].filter((part) => part !== null);
 
-  if (parts.length === 0) return "There was nothing left to delete.";
-  return `Deleted ${parts.join(", ")}.`;
+  if (parts.length === 0) return `There was nothing on ${versionLabel(result.version)} to delete.`;
+  return `Deleted ${parts.join(" and ")} from ${versionLabel(result.version)}.`;
 }
 
 function plural(count: number, noun: string): string | null {

@@ -2,7 +2,7 @@
 
 import { currentUser } from "@/lib/auth";
 import { getSheetTrades } from "@/lib/data";
-import { chat, hasOpenRouterKey, MODEL } from "@/lib/ai/openrouter";
+import { chat, hasOpenRouterKey, MISSING_KEY_ERROR, MODEL } from "@/lib/ai/openrouter";
 import {
   SYSTEM_PROMPT,
   buildPrompt,
@@ -54,11 +54,8 @@ export async function generateReport(
   const user = await currentUser();
   if (!user) return { ok: false, error: "Your session has expired. Sign in again." };
 
-  if (!hasOpenRouterKey) {
-    return {
-      ok: false,
-      error: "No OPENROUTER_API_KEY in .env.local — add one and restart the dev server.",
-    };
+  if (!hasOpenRouterKey()) {
+    return { ok: false, error: MISSING_KEY_ERROR };
   }
 
   let trades;
