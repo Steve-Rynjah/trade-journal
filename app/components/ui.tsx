@@ -51,6 +51,8 @@ const BADGE =
 
 const SUCCESS = "bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-500";
 const ERROR = "bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-500";
+/** Light grey: a break even is neither good nor bad news. */
+const NEUTRAL = "bg-gray-100 text-gray-600 dark:bg-white/[0.08] dark:text-gray-300";
 
 /** Short form on purpose — the column is narrow and the word adds nothing. */
 export function biasLabel(bias: Bias): string {
@@ -76,6 +78,7 @@ export function DirectionBadge({ direction }: { direction: Direction }) {
 const RESULT_STYLES: Record<TradeResult, string> = {
   WIN: SUCCESS,
   LOSE: ERROR,
+  BE: NEUTRAL,
 };
 
 export function ResultBadge({ result }: { result: TradeResult }) {
@@ -103,6 +106,10 @@ export const fieldGood =
 
 export const fieldBad =
   "border-error-200 bg-error-50 font-medium text-error-700 hover:border-error-300 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-500";
+
+/** Break even: filled in, but light grey rather than green or red. */
+export const fieldMuted =
+  "border-gray-200 bg-gray-100 font-medium text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-white/[0.08] dark:text-gray-300";
 
 export function Button({
   children,

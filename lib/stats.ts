@@ -4,19 +4,28 @@ export type ResultSplit = {
   total: number;
   wins: number;
   losses: number;
-  /** Share of trades that won, 0–100. */
+  /** Closed at break even — neither a win nor a loss. */
+  breakevens: number;
+  /**
+   * Share of *decided* trades that won, 0–100.
+   *
+   * Break-even trades sit outside it: closing one out flat is neither being
+   * right nor being wrong, so it should not drag the rate down like a loss.
+   */
   winRate: number;
 };
 
 export function splitResults(trades: Trade[]): ResultSplit {
   const wins = trades.filter((trade) => trade.result === "WIN").length;
   const losses = trades.filter((trade) => trade.result === "LOSE").length;
+  const decided = wins + losses;
 
   return {
     total: trades.length,
     wins,
     losses,
-    winRate: trades.length === 0 ? 0 : (wins / trades.length) * 100,
+    breakevens: trades.length - decided,
+    winRate: decided === 0 ? 0 : (wins / decided) * 100,
   };
 }
 
@@ -256,7 +265,8 @@ export type Pnl = {
  * figure is a straight read of the sheet's edge instead of a compounding curve —
  * two identical months always produce the same number.
  *
- * A win returns the reward leg of its ratio; a loss costs the risk.
+ * A win returns the reward leg of its ratio; a loss costs the risk; a break
+ * even moves nothing.
  */
 export function computePnl(
   trades: Trade[],
@@ -269,7 +279,8 @@ export function computePnl(
     if (trade.result === "WIN") {
       return total + riskPerTrade * rewardLegOf(trade.ratio);
     }
-    return total - riskPerTrade;
+    if (trade.result === "LOSE") return total - riskPerTrade;
+    return total;
   }, 0);
 
   return {
@@ -390,7 +401,7 @@ export type DayVerdict = "winning" | "losing" | "even";
  */
 export function verdictOf(trades: Trade[]): DayVerdict {
   const wins = trades.filter((trade) => trade.result === "WIN").length;
-  const losses = trades.length - wins;
+  const losses = trades.filter((trade) => trade.result === "LOSE").length;
   if (wins > losses) return "winning";
   if (losses > wins) return "losing";
   return "even";

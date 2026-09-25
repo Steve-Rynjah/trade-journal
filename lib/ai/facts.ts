@@ -10,9 +10,11 @@
 import { rewardLegOf } from "@/lib/stats";
 import { WEEKDAYS, dayNameOf, type Trade } from "@/lib/types";
 
-/** What one trade returned, in units of the risk taken. */
+/** What one trade returned, in units of the risk taken. Break even is 0R. */
 export function rOf(trade: Trade): number {
-  return trade.result === "WIN" ? rewardLegOf(trade.ratio) : -1;
+  if (trade.result === "WIN") return rewardLegOf(trade.ratio);
+  if (trade.result === "LOSE") return -1;
+  return 0;
 }
 
 export type Cohort = {
@@ -20,7 +22,8 @@ export type Cohort = {
   trades: number;
   wins: number;
   losses: number;
-  /** 0–100. Zero trades reads as 0 rather than NaN. */
+  breakevens: number;
+  /** 0–100, of decided trades only. None decided reads as 0 rather than NaN. */
   winRate: number;
   /** Summed R — the honest measure, since a 1:3 win is not a 1:1 win. */
   netR: number;
@@ -28,12 +31,14 @@ export type Cohort = {
 
 function cohort(label: string, trades: Trade[]): Cohort {
   const wins = trades.filter((trade) => trade.result === "WIN").length;
+  const losses = trades.filter((trade) => trade.result === "LOSE").length;
   return {
     label,
     trades: trades.length,
     wins,
-    losses: trades.length - wins,
-    winRate: trades.length === 0 ? 0 : round((wins / trades.length) * 100),
+    losses,
+    breakevens: trades.length - wins - losses,
+    winRate: wins + losses === 0 ? 0 : round((wins / (wins + losses)) * 100),
     netR: round(trades.reduce((total, trade) => total + rOf(trade), 0)),
   };
 }
@@ -64,6 +69,8 @@ function streaksOf(ordered: Trade[]): Streaks {
   let run = 0;
 
   for (const trade of ordered) {
+    // A break even neither extends nor breaks a run.
+    if (trade.result === "BE") continue;
     const won = trade.result === "WIN";
     run = won ? Math.max(1, run + 1) : Math.min(-1, run - 1);
     if (run > longestWin) longestWin = run;

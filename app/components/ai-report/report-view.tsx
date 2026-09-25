@@ -57,7 +57,7 @@ export function FactStrip({ facts }: { facts: SheetFacts }) {
         <Stat
           label="Trades"
           value={String(overall.trades)}
-          hint={`${overall.wins}W / ${overall.losses}L on ${daysTraded} day${daysTraded === 1 ? "" : "s"}`}
+          hint={`${overall.wins}W / ${overall.losses}L${overall.breakevens > 0 ? ` / ${overall.breakevens}BE` : ""} on ${daysTraded} day${daysTraded === 1 ? "" : "s"}`}
         />
         <Stat
           label="Win rate"

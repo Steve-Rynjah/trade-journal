@@ -138,11 +138,13 @@ export default function AnalyticsPage() {
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
         <Card>
           <CardHeader
-            title="Win & Lose %"
+            title="Win, Lose & BE %"
             hint={
               sheetSplit.total === 0
                 ? `Nothing logged in ${periodLabel}`
-                : `${sheetSplit.wins} of ${sheetSplit.total} trades won`
+                : `${sheetSplit.wins} of ${sheetSplit.total} trades won${
+                    sheetSplit.breakevens > 0 ? `, ${sheetSplit.breakevens} break even` : ""
+                  }`
             }
           />
           <div className="px-5 pb-6">

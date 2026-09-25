@@ -78,12 +78,12 @@ Answer with a single JSON object and nothing else:
 
 Two to four items per list. Leave a list empty only when the sheet genuinely gives nothing for it.`;
 
-function cohortLines(title: string, rows: { label: string; trades: number; wins: number; losses: number; winRate: number; netR: number }[]): string {
+function cohortLines(title: string, rows: { label: string; trades: number; wins: number; losses: number; breakevens: number; winRate: number; netR: number }[]): string {
   if (rows.length === 0) return "";
   const body = rows
     .map(
       (row) =>
-        `  - ${row.label}: ${row.trades} trade${row.trades === 1 ? "" : "s"}, ${row.wins}W/${row.losses}L, ${row.winRate}% win rate, ${signed(row.netR)}R`,
+        `  - ${row.label}: ${row.trades} trade${row.trades === 1 ? "" : "s"}, ${row.wins}W/${row.losses}L${row.breakevens > 0 ? `/${row.breakevens}BE` : ""}, ${row.winRate}% win rate, ${signed(row.netR)}R`,
     )
     .join("\n");
   return `${title}:\n${body}`;
@@ -107,7 +107,7 @@ export function buildPrompt(
     `This is run ${versionLabel(version)} of ${MONTHS[month - 1]} ${year}. Judge only these trades.`,
     "",
     "FACTS (authoritative — quote these, never recompute):",
-    `- Trades: ${facts.overall.trades} (${facts.overall.wins} won, ${facts.overall.losses} lost, ${facts.overall.winRate}% win rate)`,
+    `- Trades: ${facts.overall.trades} (${facts.overall.wins} won, ${facts.overall.losses} lost, ${facts.overall.breakevens} break even, ${facts.overall.winRate}% win rate of decided trades)`,
     `- Net result: ${signed(facts.overall.netR)}R across the sheet, ${signed(facts.expectancyR)}R expectancy per trade`,
     `- Best trade ${signed(facts.bestTradeR)}R, worst ${signed(facts.worstTradeR)}R`,
     `- Longest winning streak ${facts.streaks.longestWin}, longest losing streak ${facts.streaks.longestLoss}`,

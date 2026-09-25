@@ -11,11 +11,12 @@ function Tally({
 }: {
   value: number;
   label: string;
-  tone: "win" | "lose";
+  tone: "win" | "lose" | "be";
 }) {
   const tones = {
     win: "bg-brand-50 text-brand-500 dark:bg-brand-500/12 dark:text-brand-400",
     lose: "bg-error-50 text-error-600 dark:bg-error-500/12 dark:text-error-400",
+    be: "bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400",
   } as const;
 
   return (
@@ -95,9 +96,10 @@ export function PerformanceCard({
             {empty ? "—" : formatSignedPercent(netPercent)}
           </p>
 
-          <div className="mt-5 grid grid-cols-2 gap-2.5">
+          <div className="mt-5 grid grid-cols-3 gap-2.5">
             <Tally value={split.wins} label="Won" tone="win" />
             <Tally value={split.losses} label="Lost" tone="lose" />
+            <Tally value={split.breakevens} label="BE" tone="be" />
           </div>
         </div>
       </div>

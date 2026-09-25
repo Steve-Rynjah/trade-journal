@@ -33,7 +33,8 @@ function arcPath(start: number, end: number): string {
 }
 
 /**
- * Win against lose as a share of decided trades.
+ * Win, lose and break even as shares of every trade; the centre figure is the
+ * win rate, which counts decided trades only.
  *
  * Blue and red rather than green and red: the pair separates cleanly for every
  * kind of colour blindness (ΔE 30 against 6 for green/red), and it matches the
@@ -59,6 +60,9 @@ export function WinLoseDonut({
   const slices: Slice[] = [
     { key: "win", label: "Win", value: split.wins, color: "#465fff" },
     { key: "lose", label: "Lose", value: split.losses, color: "#f04438" },
+    // Light grey: a break even takes up room in the ring without reading as
+    // either outcome.
+    { key: "be", label: "BE", value: split.breakevens, color: "#d0d5dd" },
   ];
 
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);

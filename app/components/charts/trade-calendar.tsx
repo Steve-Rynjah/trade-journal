@@ -36,7 +36,8 @@ export function TradeCalendar({
 
         {cells.map((cell, index) => {
           const wins = cell.trades.filter((trade) => trade.result === "WIN").length;
-          const losses = cell.trades.length - wins;
+          const losses = cell.trades.filter((trade) => trade.result === "LOSE").length;
+          const breakevens = cell.trades.length - wins - losses;
 
           let tint =
             "bg-gray-50 text-gray-500 dark:bg-white/[0.03] dark:text-gray-400";
@@ -71,7 +72,9 @@ export function TradeCalendar({
               aria-label={
                 cell.trades.length === 0
                   ? `${formatTradeDate(cell.iso)} — no trades`
-                  : `${formatTradeDate(cell.iso)} — ${wins} won, ${losses} lost`
+                  : `${formatTradeDate(cell.iso)} — ${wins} won, ${losses} lost${
+                      breakevens > 0 ? `, ${breakevens} break even` : ""
+                    }`
               }
               className={`animate-rise flex min-h-16 flex-col rounded-xl p-2 transition-colors sm:min-h-20 ${tint}`}
             >
@@ -85,7 +88,11 @@ export function TradeCalendar({
                     <span
                       key={trade.id}
                       className={`h-1.5 w-1.5 rounded-full ${
-                        trade.result === "WIN" ? "bg-success-500" : "bg-error-500"
+                        trade.result === "WIN"
+                          ? "bg-success-500"
+                          : trade.result === "LOSE"
+                            ? "bg-error-500"
+                            : "bg-gray-300 dark:bg-gray-500"
                       }`}
                     />
                   ))}

@@ -1,6 +1,7 @@
 export const BIASES = ["BULLISH", "BEARISH"] as const;
 export const DIRECTIONS = ["LONG", "SHORT"] as const;
-export const RESULTS = ["WIN", "LOSE"] as const;
+/** `BE` is break even: the trade was closed out for neither a win nor a loss. */
+export const RESULTS = ["WIN", "LOSE", "BE"] as const;
 
 export type Bias = (typeof BIASES)[number];
 export type Direction = (typeof DIRECTIONS)[number];

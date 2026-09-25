@@ -32,6 +32,7 @@ import {
   fieldBase,
   fieldClass,
   fieldGood,
+  fieldMuted,
   fieldNeutral,
 } from "../ui";
 import { ScreenshotLightbox, type Lightbox } from "../screenshot-lightbox";
@@ -162,7 +163,8 @@ function RemarksCell({
 
 const biasTone = (option: Bias) => (option === "BULLISH" ? fieldGood : fieldBad);
 const directionTone = (option: Direction) => (option === "LONG" ? fieldGood : fieldBad);
-const resultTone = (option: TradeResult) => (option === "WIN" ? fieldGood : fieldBad);
+const resultTone = (option: TradeResult) =>
+  option === "WIN" ? fieldGood : option === "LOSE" ? fieldBad : fieldMuted;
 
 /** The input cells, shared by the new-trade row and any row being edited. */
 function DraftCells({
