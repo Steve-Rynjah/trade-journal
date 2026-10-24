@@ -219,7 +219,7 @@ export function sheetFacts(trades: Trade[]): SheetFacts {
         : days.reduce((most, day) => (day.trades > most.trades ? day : most)),
     afterLoss: afterLossOf(ordered),
     withRemarks: ordered.filter((trade) => (trade.remarks ?? "").trim() !== "").length,
-    withScreenshot: ordered.filter((trade) => trade.screenshotPath !== null).length,
+    withScreenshot: ordered.filter((trade) => trade.screenshotPaths.length > 0).length,
   };
 }
 
@@ -234,6 +234,7 @@ export function tradeLines(trades: Trade[]): string[] {
       trade.direction,
       `bias ${trade.bias}`,
       `RR ${trade.ratio}`,
+      trade.setups.length === 0 ? "no setup" : `setup ${trade.setups.join(" + ")}`,
       trade.result,
       `${rOf(trade) > 0 ? "+" : ""}${rOf(trade)}R`,
       remarks === "" ? "no note" : `note: ${remarks}`,

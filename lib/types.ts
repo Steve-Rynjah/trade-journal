@@ -3,11 +3,34 @@ export const DIRECTIONS = ["LONG", "SHORT"] as const;
 /** `BE` is break even: the trade was closed out for neither a win nor a loss. */
 export const RESULTS = ["WIN", "LOSE", "BE"] as const;
 
+/**
+ * The setups a trade can be tagged with. Several can apply to one trade, and
+ * the database check holds the same list — add one here, add it there too.
+ */
+export const SETUPS = [
+  "Asia Sweep",
+  "Asia Support",
+  "Asia Resistance",
+  "Equal Highs",
+  "Equal Lows",
+  "Nearest $ HTF",
+  "London Continuation",
+  "Asia Range",
+  "Asia Trend",
+] as const;
+
+/** At most this many charts per trade — enough for HTF context plus entry. */
+export const MAX_SCREENSHOTS_PER_TRADE = 6;
+
 export type Bias = (typeof BIASES)[number];
 export type Direction = (typeof DIRECTIONS)[number];
 export type TradeResult = (typeof RESULTS)[number];
+export type Setup = (typeof SETUPS)[number];
 
-/** What a fresh row starts with — the ratio taken most often. */
+/**
+ * Every new trade is taken at 1 : 2. The column is no longer on the sheet, but
+ * PnL still reads the reward leg off it, so it is written behind the scenes.
+ */
 export const DEFAULT_RATIO = "1 : 2";
 export const MAX_RATIO_LENGTH = 32;
 
@@ -27,14 +50,18 @@ export type Trade = {
   /** Free text, exactly as typed: `1 : 2`, `1 : 1.5`, anything. */
   ratio: string;
   result: TradeResult;
+  /** Chip tags, in the order of `SETUPS`. Empty when none apply. */
+  setups: Setup[];
   remarks: string | null;
-  /** Object path in the screenshots bucket. Set on any trade with a chart. */
-  screenshotPath: string | null;
+  /** Object paths in the screenshots bucket, oldest first. */
+  screenshotPaths: string[];
   createdAt: string;
 };
 
-/** A trade plus a freshly minted signed URL for its screenshot. */
-export type TradeWithScreenshot = Trade & { screenshotUrl: string | null };
+export type Screenshot = { path: string; url: string };
+
+/** A trade plus a freshly minted signed URL for each of its screenshots. */
+export type TradeWithScreenshot = Trade & { screenshots: Screenshot[] };
 
 export type TradeRow = {
   id: string;
@@ -44,8 +71,9 @@ export type TradeRow = {
   direction: Direction;
   ratio: string | null;
   result: TradeResult;
+  setups: string[] | null;
   remarks: string | null;
-  screenshot_path: string | null;
+  screenshot_paths: string[] | null;
   created_at: string;
 };
 
@@ -58,10 +86,16 @@ export function rowToTrade(row: TradeRow): Trade {
     direction: row.direction,
     ratio: row.ratio ?? DEFAULT_RATIO,
     result: row.result,
+    setups: sortSetups(row.setups ?? []),
     remarks: row.remarks,
-    screenshotPath: row.screenshot_path,
+    screenshotPaths: row.screenshot_paths ?? [],
     createdAt: row.created_at,
   };
+}
+
+/** Known setups only, in list order — so chips line up the same on every row. */
+export function sortSetups(values: readonly string[]): Setup[] {
+  return SETUPS.filter((setup) => values.includes(setup));
 }
 
 /* ---------------------------------------------------------------------------

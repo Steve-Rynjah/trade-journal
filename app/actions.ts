@@ -11,11 +11,15 @@ import {
   BIASES,
   DIRECTIONS,
   MAX_RATIO_LENGTH,
+  MAX_SCREENSHOTS_PER_TRADE,
   RESULTS,
+  SETUPS,
   isValidDate,
   isWeekday,
+  sortSetups,
   type Bias,
   type Direction,
+  type Setup,
   type TradeResult,
 } from "@/lib/types";
 
@@ -31,6 +35,7 @@ type ParsedTrade = {
   /** Free text — the journal records it, nothing computes on it. */
   ratio: string;
   result: TradeResult;
+  setups: Setup[];
   remarks: string | null;
 };
 
@@ -47,6 +52,7 @@ function parseTrade(formData: FormData): {
   const result = String(formData.get("result") ?? "");
   const ratio = String(formData.get("ratio") ?? "").trim();
   const remarks = String(formData.get("remarks") ?? "").trim();
+  const setups = formData.getAll("setups").map(String);
 
   if (!isValidDate(tradeDate)) {
     fieldErrors.trade_date = "Pick a date.";
@@ -60,6 +66,10 @@ function parseTrade(formData: FormData): {
   }
   if (!RESULTS.includes(result as TradeResult)) {
     fieldErrors.result = "Choose a result.";
+  }
+
+  if (setups.some((setup) => !SETUPS.includes(setup as Setup))) {
+    fieldErrors.setups = "Pick setups from the list.";
   }
 
   if (!Number.isInteger(version) || version < FIRST_VERSION || version > MAX_SHEET_VERSIONS) {
@@ -82,25 +92,36 @@ function parseTrade(formData: FormData): {
       direction: direction as Direction,
       ratio,
       result: result as TradeResult,
+      setups: sortSetups(setups),
       remarks: remarks === "" ? null : remarks,
     },
   };
 }
 
-function readScreenshot(formData: FormData): {
-  file?: File;
+/** Every image under `screenshot`, checked one by one. Empty slots are skipped. */
+function readScreenshots(formData: FormData): {
+  files: File[];
   error?: string;
 } {
-  const entry = formData.get("screenshot");
-  if (!(entry instanceof File) || entry.size === 0) return {};
+  const files = formData
+    .getAll("screenshot")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
-  if (!ALLOWED_TYPES.includes(entry.type)) {
-    return { error: "Screenshot must be a PNG, JPEG, WebP or AVIF image." };
+  for (const file of files) {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return { files: [], error: "Screenshots must be PNG, JPEG, WebP or AVIF images." };
+    }
+    if (file.size > MAX_SCREENSHOT_BYTES) {
+      return { files: [], error: `${file.name} is over 5 MB.` };
+    }
   }
-  if (entry.size > MAX_SCREENSHOT_BYTES) {
-    return { error: "Screenshot must be 5 MB or smaller." };
-  }
-  return { file: entry };
+  return { files };
+}
+
+function tooMany(count: number): string | null {
+  return count > MAX_SCREENSHOTS_PER_TRADE
+    ? `A trade holds at most ${MAX_SCREENSHOTS_PER_TRADE} charts.`
+    : null;
 }
 
 function extensionFor(file: File): string {
@@ -116,6 +137,36 @@ function extensionFor(file: File): string {
  */
 function screenshotPathFor(user: SessionUser, file: File): string {
   return `${user.id}/${crypto.randomUUID()}.${extensionFor(file)}`;
+}
+
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * Upload every file or none of them: if one fails, the ones already up are
+ * removed again so a half-attached set never outlives the error.
+ */
+async function uploadAll(
+  supabase: Supabase,
+  user: SessionUser,
+  files: File[],
+): Promise<{ paths: string[]; error?: string }> {
+  const paths: string[] = [];
+  for (const file of files) {
+    const path = screenshotPathFor(user, file);
+    const { error } = await supabase.storage
+      .from(SCREENSHOT_BUCKET)
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) {
+      await removeFiles(supabase, paths);
+      return { paths: [], error: `Upload failed: ${error.message}` };
+    }
+    paths.push(path);
+  }
+  return { paths };
+}
+
+async function removeFiles(supabase: Supabase, paths: string[]) {
+  if (paths.length > 0) await supabase.storage.from(SCREENSHOT_BUCKET).remove(paths);
 }
 
 /**
@@ -150,9 +201,10 @@ export async function createTrade(
     return { status: "error", message: "Check the highlighted fields.", fieldErrors };
   }
 
-  const { file, error: fileError } = readScreenshot(formData);
-  if (fileError) {
-    return { status: "error", message: fileError, fieldErrors: { screenshot: fileError } };
+  const { files, error: fileError } = readScreenshots(formData);
+  const limitError = fileError ?? tooMany(files.length);
+  if (limitError) {
+    return { status: "error", message: limitError, fieldErrors: { screenshot: limitError } };
   }
 
   const user = await currentUser();
@@ -160,32 +212,20 @@ export async function createTrade(
 
   try {
     const supabase = await createClient();
-    let screenshotPath: string | null = null;
 
-    if (file) {
-      const path = screenshotPathFor(user, file);
-      const { error } = await supabase.storage
-        .from(SCREENSHOT_BUCKET)
-        .upload(path, file, { contentType: file.type, upsert: false });
-
-      if (error) {
-        return { status: "error", message: `Upload failed: ${error.message}` };
-      }
-      screenshotPath = path;
-    }
+    const { paths, error: uploadError } = await uploadAll(supabase, user, files);
+    if (uploadError) return { status: "error", message: uploadError };
 
     // `user_id` is stated rather than left to the column default: the RLS check
     // compares it to auth.uid(), and a row that names its owner is one less
     // thing depending on a default staying in place.
     const { error } = await supabase
       .from("trades")
-      .insert({ ...values, user_id: user.id, screenshot_path: screenshotPath });
+      .insert({ ...values, user_id: user.id, screenshot_paths: paths });
 
     if (error) {
-      // Don't leave the uploaded file behind if the row never landed.
-      if (screenshotPath) {
-        await supabase.storage.from(SCREENSHOT_BUCKET).remove([screenshotPath]);
-      }
+      // Don't leave the uploaded files behind if the row never landed.
+      await removeFiles(supabase, paths);
       return saveError("Could not save trade", error.message);
     }
 
@@ -211,7 +251,7 @@ export async function updateTrade(
     return { status: "error", message: "Check the highlighted fields.", fieldErrors };
   }
 
-  const { file, error: fileError } = readScreenshot(formData);
+  const { files, error: fileError } = readScreenshots(formData);
   if (fileError) {
     return { status: "error", message: fileError, fieldErrors: { screenshot: fileError } };
   }
@@ -224,7 +264,7 @@ export async function updateTrade(
 
     const { data: existing, error: readError } = await supabase
       .from("trades")
-      .select("screenshot_path")
+      .select("screenshot_paths")
       .eq("id", id)
       .single();
 
@@ -232,36 +272,23 @@ export async function updateTrade(
       return { status: "error", message: `Could not load trade: ${readError.message}` };
     }
 
-    const previousPath: string | null = existing?.screenshot_path ?? null;
-    let screenshotPath = previousPath;
+    // New charts join the ones already there rather than replacing them —
+    // removing one is its own action, from the thumbnail.
+    const previous: string[] = existing?.screenshot_paths ?? [];
+    const limitError = tooMany(previous.length + files.length);
+    if (limitError) return { status: "error", message: limitError };
 
-    if (file) {
-      const path = screenshotPathFor(user, file);
-      const { error } = await supabase.storage
-        .from(SCREENSHOT_BUCKET)
-        .upload(path, file, { contentType: file.type, upsert: false });
-
-      if (error) {
-        return { status: "error", message: `Upload failed: ${error.message}` };
-      }
-      screenshotPath = path;
-    }
+    const { paths, error: uploadError } = await uploadAll(supabase, user, files);
+    if (uploadError) return { status: "error", message: uploadError };
 
     const { error } = await supabase
       .from("trades")
-      .update({ ...values, screenshot_path: screenshotPath })
+      .update({ ...values, screenshot_paths: [...previous, ...paths] })
       .eq("id", id);
 
     if (error) {
-      if (file && screenshotPath && screenshotPath !== previousPath) {
-        await supabase.storage.from(SCREENSHOT_BUCKET).remove([screenshotPath]);
-      }
+      await removeFiles(supabase, paths);
       return saveError("Could not update trade", error.message);
-    }
-
-    // Only now is the old file genuinely orphaned.
-    if (previousPath && previousPath !== screenshotPath) {
-      await supabase.storage.from(SCREENSHOT_BUCKET).remove([previousPath]);
     }
 
     revalidatePath("/", "layout");
@@ -285,7 +312,7 @@ export async function deleteTrade(id: string): Promise<FormState> {
 
     const { data: existing } = await supabase
       .from("trades")
-      .select("screenshot_path")
+      .select("screenshot_paths")
       .eq("id", id)
       .single();
 
@@ -294,11 +321,7 @@ export async function deleteTrade(id: string): Promise<FormState> {
       return { status: "error", message: `Could not delete trade: ${error.message}` };
     }
 
-    if (existing?.screenshot_path) {
-      await supabase.storage
-        .from(SCREENSHOT_BUCKET)
-        .remove([existing.screenshot_path]);
-    }
+    await removeFiles(supabase, existing?.screenshot_paths ?? []);
 
     revalidatePath("/", "layout");
     return { status: "success", message: "Trade deleted." };
@@ -311,18 +334,18 @@ export async function deleteTrade(id: string): Promise<FormState> {
 }
 
 /**
- * Attach (or replace) the chart for a trade, won or lost.
+ * Attach one or more charts to a saved trade, won or lost.
  *
  * Split out from `updateTrade` because the journal uploads straight from the
  * row's file input — there is no form around it to carry the other fields.
  */
-export async function setScreenshot(formData: FormData): Promise<FormState> {
+export async function addScreenshots(formData: FormData): Promise<FormState> {
   const id = String(formData.get("id") ?? "");
   if (!id) return { status: "error", message: "Missing trade id." };
 
-  const { file, error: fileError } = readScreenshot(formData);
+  const { files, error: fileError } = readScreenshots(formData);
   if (fileError) return { status: "error", message: fileError };
-  if (!file) return { status: "error", message: "No image was selected." };
+  if (files.length === 0) return { status: "error", message: "No image was selected." };
 
   const user = await currentUser();
   if (!user) return SIGNED_OUT;
@@ -332,7 +355,7 @@ export async function setScreenshot(formData: FormData): Promise<FormState> {
 
     const { data: existing, error: readError } = await supabase
       .from("trades")
-      .select("screenshot_path")
+      .select("screenshot_paths")
       .eq("id", id)
       .single();
 
@@ -340,33 +363,75 @@ export async function setScreenshot(formData: FormData): Promise<FormState> {
       return { status: "error", message: `Could not load trade: ${readError.message}` };
     }
 
-    const path = screenshotPathFor(user, file);
-    const { error: uploadError } = await supabase.storage
-      .from(SCREENSHOT_BUCKET)
-      .upload(path, file, { contentType: file.type, upsert: false });
+    const previous: string[] = existing?.screenshot_paths ?? [];
+    const limitError = tooMany(previous.length + files.length);
+    if (limitError) return { status: "error", message: limitError };
 
-    if (uploadError) {
-      return { status: "error", message: `Upload failed: ${uploadError.message}` };
+    const { paths, error: uploadError } = await uploadAll(supabase, user, files);
+    if (uploadError) return { status: "error", message: uploadError };
+
+    const { error } = await supabase
+      .from("trades")
+      .update({ screenshot_paths: [...previous, ...paths] })
+      .eq("id", id);
+
+    if (error) {
+      await removeFiles(supabase, paths);
+      return { status: "error", message: `Could not attach charts: ${error.message}` };
+    }
+
+    revalidatePath("/", "layout");
+    return {
+      status: "success",
+      message: files.length === 1 ? "Chart attached." : `${files.length} charts attached.`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Something went wrong.",
+    };
+  }
+}
+
+/** Take one chart off a trade, and out of storage once the row lets go of it. */
+export async function removeScreenshot(id: string, path: string): Promise<FormState> {
+  if (!id || !path) return { status: "error", message: "Missing chart." };
+
+  const user = await currentUser();
+  if (!user) return SIGNED_OUT;
+
+  try {
+    const supabase = await createClient();
+
+    const { data: existing, error: readError } = await supabase
+      .from("trades")
+      .select("screenshot_paths")
+      .eq("id", id)
+      .single();
+
+    if (readError) {
+      return { status: "error", message: `Could not load trade: ${readError.message}` };
+    }
+
+    const previous: string[] = existing?.screenshot_paths ?? [];
+    if (!previous.includes(path)) {
+      return { status: "error", message: "That chart is not on this trade." };
     }
 
     const { error } = await supabase
       .from("trades")
-      .update({ screenshot_path: path })
+      .update({ screenshot_paths: previous.filter((entry) => entry !== path) })
       .eq("id", id);
 
     if (error) {
-      await supabase.storage.from(SCREENSHOT_BUCKET).remove([path]);
-      return { status: "error", message: `Could not attach chart: ${error.message}` };
+      return { status: "error", message: `Could not remove chart: ${error.message}` };
     }
 
-    // Only now is the previous file genuinely orphaned.
-    const previousPath: string | null = existing?.screenshot_path ?? null;
-    if (previousPath && previousPath !== path) {
-      await supabase.storage.from(SCREENSHOT_BUCKET).remove([previousPath]);
-    }
+    // Only now is the file genuinely orphaned.
+    await removeFiles(supabase, [path]);
 
     revalidatePath("/", "layout");
-    return { status: "success", message: "Chart attached." };
+    return { status: "success", message: "Chart removed." };
   } catch (error) {
     return {
       status: "error",

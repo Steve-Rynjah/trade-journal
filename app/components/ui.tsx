@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { Bias, Direction, TradeResult } from "@/lib/types";
+import type { Bias, Direction, Setup, TradeResult } from "@/lib/types";
 
 export function Card({
   children,
@@ -84,6 +84,28 @@ const RESULT_STYLES: Record<TradeResult, string> = {
 export function ResultBadge({ result }: { result: TradeResult }) {
   return (
     <span className={`${BADGE} font-semibold ${RESULT_STYLES[result]}`}>{result}</span>
+  );
+}
+
+/**
+ * One colour per setup, so a tag is recognisable before it is read: a tint
+ * paired with a deeper text shade of the same hue.
+ */
+export const SETUP_STYLES: Record<Setup, string> = {
+  "Asia Sweep": "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
+  "Asia Support": "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  "Asia Resistance": "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+  "Equal Highs": "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+  "Equal Lows": "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+  "Nearest $ HTF": "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
+  "London Continuation": "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+  "Asia Range": "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
+  "Asia Trend": "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300",
+};
+
+export function SetupChip({ setup }: { setup: Setup }) {
+  return (
+    <span className={`${BADGE} whitespace-nowrap ${SETUP_STYLES[setup]}`}>{setup}</span>
   );
 }
 

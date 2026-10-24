@@ -1,4 +1,11 @@
-import { WEEKDAYS, dayNameOf, type Direction, type Trade, type Weekday } from "./types";
+import {
+  WEEKDAYS,
+  dayNameOf,
+  type Direction,
+  type Setup,
+  type Trade,
+  type Weekday,
+} from "./types";
 
 export type ResultSplit = {
   total: number;
@@ -447,6 +454,33 @@ export function tradingDaysByWeekday(trades: Trade[]): WeekdayDays[] {
       ...counts,
       net: counts.winning - counts.losing,
     };
+  });
+}
+
+/* ---------------------------------------------------------------------------
+   Setups
+   --------------------------------------------------------------------------- */
+
+/** The setups Analytics scores — the two that describe the Asia session. */
+export const SCORED_SETUPS = ["Asia Range", "Asia Trend"] as const satisfies readonly Setup[];
+
+export type SetupScore = {
+  setup: Setup;
+  wins: number;
+  losses: number;
+  /** Trades tagged with it, break evens included. */
+  traded: number;
+  /** +1 per win, −1 per loss — the same read as a Trading days row. */
+  net: number;
+};
+
+/** Win-minus-loss standing of each scored setup, in list order. */
+export function setupScores(trades: Trade[]): SetupScore[] {
+  return SCORED_SETUPS.map((setup) => {
+    const tagged = trades.filter((trade) => trade.setups.includes(setup));
+    const wins = tagged.filter((trade) => trade.result === "WIN").length;
+    const losses = tagged.filter((trade) => trade.result === "LOSE").length;
+    return { setup, wins, losses, traded: tagged.length, net: wins - losses };
   });
 }
 

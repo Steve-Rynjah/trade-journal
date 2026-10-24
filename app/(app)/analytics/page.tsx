@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { LongShortCard } from "@/app/components/charts/long-short-card";
 import { PerformanceCard } from "@/app/components/charts/performance-card";
 import { PnlCard } from "@/app/components/charts/pnl-card";
+import { SetupsChart } from "@/app/components/charts/setups-chart";
 import { TradingDaysChart } from "@/app/components/charts/trading-days-chart";
 import { TradeCalendar } from "@/app/components/charts/trade-calendar";
 import { WinLoseDonut } from "@/app/components/charts/win-lose-donut";
@@ -21,6 +22,7 @@ import {
   formatMoney,
   formatRiskPercent,
   monthsCovered,
+  setupScores,
   splitResults,
   versionLabel,
   tradingDaysByWeekday,
@@ -56,6 +58,7 @@ export default function AnalyticsPage() {
   const runSplit = splitResults(runTrades);
   const runPnl = computePnl(runTrades, accountSize, riskPercent);
   const weekdays = tradingDaysByWeekday(scoped);
+  const setups = setupScores(scoped);
 
   // Risk is the other half of every money figure on this page, so the menu sits
   // on the card it changes rather than up with the period filter.
@@ -159,15 +162,24 @@ export default function AnalyticsPage() {
         />
       </div>
 
-      {/* Row 3 — which days pay, and where they fall in the month. */}
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        <Card>
-          <CardHeader
-            title="Trading days"
-            hint="Winning days minus losing days, by weekday"
-          />
-          <TradingDaysChart rows={weekdays} />
-        </Card>
+      {/* Row 3 — which days pay and which setups get taken, beside where they
+          fall in the month. `items-start` so the left column stacks at its own
+          height rather than stretching to the calendar's. */}
+      <div className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-5">
+          <Card>
+            <CardHeader
+              title="Trading days"
+              hint="Winning days minus losing days, by weekday"
+            />
+            <TradingDaysChart rows={weekdays} />
+          </Card>
+
+          <Card>
+            <CardHeader title="Setups" hint="Winning trades minus losing trades, by setup" />
+            <SetupsChart rows={setups} />
+          </Card>
+        </div>
 
         <Card>
           <CardHeader

@@ -44,10 +44,9 @@ export async function resetVersion(version: number): Promise<ResetResult> {
 
     const { data: attached, error: readError } = await supabase
       .from("trades")
-      .select("screenshot_path")
+      .select("screenshot_paths")
       .eq("user_id", user.id)
-      .eq("version", version)
-      .not("screenshot_path", "is", null);
+      .eq("version", version);
 
     if (readError) {
       return { ok: false, error: `Could not read ${label} trades: ${readError.message}` };
@@ -55,9 +54,9 @@ export async function resetVersion(version: number): Promise<ResetResult> {
 
     // Files first: a row deleted before its file leaves an orphan nothing
     // points at, whereas the reverse is a broken screenshot for a moment.
-    const paths = (attached ?? [])
-      .map((row) => row.screenshot_path as string | null)
-      .filter((path): path is string => Boolean(path));
+    const paths = (attached ?? []).flatMap(
+      (row) => (row.screenshot_paths as string[] | null) ?? [],
+    );
 
     let screenshots = 0;
     for (let at = 0; at < paths.length; at += PAGE) {

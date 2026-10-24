@@ -12,7 +12,7 @@ import {
   sheetCapacity,
 } from "@/lib/stats";
 import {
-  composeRatio,
+  DEFAULT_RATIO,
   defaultDateInMonth,
   isInMonth,
   isWeekday,
@@ -24,16 +24,17 @@ import { useTrades, useSheet } from "../shell/app-data";
 import { Card } from "../ui";
 import { TradeSheet, type Draft } from "./trade-sheet";
 
-/** A fresh row starts empty — nothing is pre-picked but the printed risk leg. */
+/** A fresh row starts empty — only the hidden 1 : 2 ratio is pre-set. */
 function blankDraft(): Draft {
   return {
     tradeDate: "",
     bias: "",
     direction: "",
-    reward: "",
+    setups: [],
     result: "",
     remarks: "",
-    screenshot: null,
+    ratio: DEFAULT_RATIO,
+    screenshots: [],
   };
 }
 
@@ -83,10 +84,11 @@ export function Journal() {
       data.set("version", String(version));
       data.set("bias", draft.bias);
       data.set("direction", draft.direction);
-      data.set("ratio", composeRatio("1", draft.reward));
+      data.set("ratio", draft.ratio);
       data.set("result", draft.result);
       data.set("remarks", draft.remarks);
-      if (draft.screenshot) data.set("screenshot", draft.screenshot);
+      for (const setup of draft.setups) data.append("setups", setup);
+      for (const file of draft.screenshots) data.append("screenshot", file);
 
       const result = await createTrade(EMPTY_FORM_STATE, data);
       if (result.status === "success") {

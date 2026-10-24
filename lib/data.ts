@@ -11,8 +11,7 @@ import {
 } from "./types";
 
 /**
- * Every trade, newest first, each one that has a chart carrying a freshly
- * signed screenshot URL.
+ * Every trade, newest first, each chart carrying a freshly signed URL.
  *
  * The bucket is private, so URLs are minted per render rather than stored. They
  * expire an hour later, which is well past the life of a page view.
@@ -31,12 +30,10 @@ export async function getTrades(): Promise<TradeWithScreenshot[]> {
   }
 
   const trades = (data as TradeRow[]).map(rowToTrade);
-  const paths = trades
-    .map((trade) => trade.screenshotPath)
-    .filter((path): path is string => Boolean(path));
+  const paths = trades.flatMap((trade) => trade.screenshotPaths);
 
   if (paths.length === 0) {
-    return trades.map((trade) => ({ ...trade, screenshotUrl: null }));
+    return trades.map((trade) => ({ ...trade, screenshots: [] }));
   }
 
   const { data: signed } = await supabase.storage
@@ -54,9 +51,10 @@ export async function getTrades(): Promise<TradeWithScreenshot[]> {
 
   return trades.map((trade) => ({
     ...trade,
-    screenshotUrl: trade.screenshotPath
-      ? (urlByPath.get(trade.screenshotPath) ?? null)
-      : null,
+    screenshots: trade.screenshotPaths.flatMap((path) => {
+      const url = urlByPath.get(path);
+      return url ? [{ path, url }] : [];
+    }),
   }));
 }
 
