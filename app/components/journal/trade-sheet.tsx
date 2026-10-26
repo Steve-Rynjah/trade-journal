@@ -58,6 +58,9 @@ export type Draft = {
 const TH =
   "whitespace-nowrap px-4 py-3 text-left text-theme-xs font-medium uppercase tracking-[0.06em] text-gray-500 dark:text-gray-400";
 const TD = "px-4 py-3 align-top text-theme-sm";
+/** Bias, Direction and Results hold one short word each, so they pad less. */
+const TH_TIGHT = TH.replace("px-4", "px-3");
+const TD_TIGHT = TD.replace("px-4", "px-3");
 
 function SelectCell<T extends string>({
   label,
@@ -67,7 +70,7 @@ function SelectCell<T extends string>({
   tone,
   format,
   placeholder = "—",
-  minWidth = "min-w-[6.5rem]",
+  minWidth = "min-w-[5.25rem]",
 }: {
   label: string;
   /** `""` until the journal picks something — a fresh row starts unset. */
@@ -177,9 +180,10 @@ function SetupPicker({
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const open = anchor !== null;
 
   useEffect(() => {
-    if (!anchor) return;
+    if (!open) return;
     const close = () => setAnchor(null);
     const inside = (target: EventTarget | null) =>
       target instanceof Node &&
@@ -197,17 +201,31 @@ function SetupPicker({
       if (!inside(event.target)) close();
     }
 
+    // Picking a setup adds a chip, and the chips wrap: the field grows, so the
+    // list follows its new edge rather than covering it.
+    const button = buttonRef.current!;
+    const resize = new ResizeObserver(() => {
+      const next = button.getBoundingClientRect();
+      setAnchor((open) =>
+        open && (open.top !== next.top || open.bottom !== next.bottom || open.left !== next.left)
+          ? next
+          : open,
+      );
+    });
+    resize.observe(button);
+
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", close);
     return () => {
+      resize.disconnect();
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", close);
     };
-  }, [anchor]);
+  }, [open]);
 
   function toggle(setup: Setup) {
     onChange(
@@ -400,7 +418,7 @@ function DraftCells({
           className={`${fieldClass} tnum h-9`}
         />
       </td>
-      <td className={`${TD} cell-rule`} onKeyDown={onKeyDown}>
+      <td className={`${TD_TIGHT} cell-rule`} onKeyDown={onKeyDown}>
         <SelectCell
           label="Bias"
           value={draft.bias}
@@ -411,7 +429,7 @@ function DraftCells({
           placeholder="—"
         />
       </td>
-      <td className={`${TD} cell-rule`} onKeyDown={onKeyDown}>
+      <td className={`${TD_TIGHT} cell-rule`} onKeyDown={onKeyDown}>
         <SelectCell
           label="Direction"
           value={draft.direction}
@@ -423,7 +441,7 @@ function DraftCells({
       <td className={`${TD} cell-rule`}>
         <SetupPicker value={draft.setups} onChange={(setups) => onChange({ ...draft, setups })} />
       </td>
-      <td className={`${TD} cell-rule`} onKeyDown={onKeyDown}>
+      <td className={`${TD_TIGHT} cell-rule`} onKeyDown={onKeyDown}>
         <SelectCell
           label="Result"
           value={draft.result}
@@ -634,15 +652,15 @@ export function TradeSheet({
           `overflow-x-auto` already clips the other axis, so this is all the
           clipping the table needs — and none of it reaches the footer. */}
       <div className="overflow-x-auto rounded-t-2xl">
-        <table className="w-full min-w-[70rem] border-collapse">
+        <table className="w-full min-w-[76rem] border-collapse">
           {/* Setup and Chart wrap their chips and thumbnails onto more lines
               rather than widening; Remarks takes whatever is left over. */}
           <colgroup>
             <col className="w-[10rem]" />
-            <col className="w-[7.5rem]" />
-            <col className="w-[7.5rem]" />
-            <col className="w-[15rem]" />
-            <col className="w-[7.5rem]" />
+            <col className="w-[6.75rem]" />
+            <col className="w-[6.75rem]" />
+            <col className="w-[24rem]" />
+            <col className="w-[6.75rem]" />
             <col className="min-w-[15rem]" />
             <col className="w-[10rem]" />
             <col className="w-[5rem]" />
@@ -651,10 +669,10 @@ export function TradeSheet({
           <thead>
             <tr className="border-y border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-white/[0.02]">
               <th className={`${TH} cell-rule`}>Date</th>
-              <th className={`${TH} cell-rule`}>Bias</th>
-              <th className={`${TH} cell-rule`}>Direction</th>
+              <th className={`${TH_TIGHT} cell-rule`}>Bias</th>
+              <th className={`${TH_TIGHT} cell-rule`}>Direction</th>
               <th className={`${TH} cell-rule`}>Setup</th>
-              <th className={`${TH} cell-rule`}>Results</th>
+              <th className={`${TH_TIGHT} cell-rule`}>Results</th>
               <th className={`${TH} cell-rule`}>Remarks</th>
               <th className={`${TH} cell-rule`}>Chart</th>
               <th className={`${TH} text-right`}>
@@ -757,10 +775,10 @@ export function TradeSheet({
                   >
                     {formatTradeDate(trade.tradeDate)}
                   </td>
-                  <td className={`${TD} cell-rule`}>
+                  <td className={`${TD_TIGHT} cell-rule`}>
                     <BiasBadge bias={trade.bias} />
                   </td>
-                  <td className={`${TD} cell-rule`}>
+                  <td className={`${TD_TIGHT} cell-rule`}>
                     <DirectionBadge direction={trade.direction} />
                   </td>
                   <td className={`${TD} cell-rule`}>
@@ -774,7 +792,7 @@ export function TradeSheet({
                       <span className="text-gray-300 dark:text-gray-600">—</span>
                     )}
                   </td>
-                  <td className={`${TD} cell-rule`}>
+                  <td className={`${TD_TIGHT} cell-rule`}>
                     <ResultBadge result={trade.result} />
                   </td>
                   <td

@@ -17,6 +17,9 @@ export const SETUPS = [
   "London Continuation",
   "Asia Range",
   "Asia Trend",
+  "Support >> Resistance",
+  "Resistance >> Support",
+  "Asia N-Pattern",
 ] as const;
 
 /** At most this many charts per trade — enough for HTF context plus entry. */

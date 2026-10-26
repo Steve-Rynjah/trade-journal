@@ -101,6 +101,9 @@ export const SETUP_STYLES: Record<Setup, string> = {
   "London Continuation": "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
   "Asia Range": "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
   "Asia Trend": "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300",
+  "Support >> Resistance": "bg-lime-100 text-lime-700 dark:bg-lime-500/15 dark:text-lime-300",
+  "Resistance >> Support": "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
+  "Asia N-Pattern": "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300",
 };
 
 export function SetupChip({ setup }: { setup: Setup }) {

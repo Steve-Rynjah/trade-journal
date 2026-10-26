@@ -120,6 +120,10 @@ export function Chart({
   const hoveredRef = useRef<string | null>(null);
   /** Live theme for the mount-time effect, which binds only once. */
   const themeRef = useRef(theme);
+  /** The OHLC readout in the top-left corner, written straight to the DOM. */
+  const legendRef = useRef<HTMLDivElement | null>(null);
+  /** Index of the candle under the crosshair; null reads the latest one. */
+  const legendIndexRef = useRef<number | null>(null);
 
   // Live values for the pointer handlers, which are bound once and would
   // otherwise capture whatever these were on the first render. Written in an
@@ -195,6 +199,51 @@ export function Chart({
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }, []);
 
+  // The readout follows the crosshair at mouse-move rate, so it skips React
+  // and writes the text itself. Like TradingView: off the bars, it shows the
+  // latest candle; the change is measured from the previous candle's close.
+  const paintLegend = useCallback(() => {
+    const el = legendRef.current;
+    if (!el) return;
+    const { candles: bars, theme: colors } = latest.current;
+    if (bars.length === 0) {
+      el.replaceChildren();
+      return;
+    }
+    const at = legendIndexRef.current;
+    const index = at === null ? bars.length - 1 : Math.max(0, Math.min(bars.length - 1, at));
+    const bar = bars[index];
+    const base = index > 0 ? bars[index - 1].close : bar.open;
+    const change = bar.close - base;
+    const color = bar.close >= bar.open ? colors.upColor : colors.downColor;
+    const sign = change > 0 ? "+" : change < 0 ? "\u2212" : "";
+    const pct = base === 0 ? 0 : (Math.abs(change) / base) * 100;
+
+    const parts: [string, string][] = [
+      ["O", bar.open.toFixed(5)],
+      ["H", bar.high.toFixed(5)],
+      ["L", bar.low.toFixed(5)],
+      ["C", bar.close.toFixed(5)],
+      ["", `${sign}${Math.abs(change).toFixed(5)} (${sign}${pct.toFixed(2)}%)`],
+    ];
+    el.replaceChildren(
+      ...parts.map(([label, value]) => {
+        const item = document.createElement("span");
+        if (label) {
+          const tag = document.createElement("span");
+          tag.textContent = label;
+          tag.style.color = colors.scaleText;
+          item.append(tag);
+        }
+        const num = document.createElement("span");
+        num.textContent = value;
+        num.style.color = color;
+        item.append(num);
+        return item;
+      }),
+    );
+  }, []);
+
   // ---- chart lifecycle -----------------------------------------------------
   useEffect(() => {
     const host = hostRef.current;
@@ -233,6 +282,13 @@ export function Chart({
 
     const layer = new DrawingLayer();
     series.attachPrimitive(layer);
+
+    const onCrosshair = (param: { logical?: Logical; point?: unknown }) => {
+      legendIndexRef.current =
+        param.point && param.logical !== undefined ? Math.round(param.logical) : null;
+      paintLegend();
+    };
+    chart.subscribeCrosshairMove(onCrosshair);
 
     chartRef.current = chart;
     seriesRef.current = series;
@@ -325,6 +381,7 @@ export function Chart({
     resize.observe(host);
 
     return () => {
+      chart.unsubscribeCrosshairMove(onCrosshair);
       resize.disconnect();
       themeWatch.disconnect();
       window.removeEventListener("wheel", onWheel, { capture: true });
@@ -335,7 +392,7 @@ export function Chart({
       sessionRef.current = null;
       appliedRef.current = null;
     };
-  }, []);
+  }, [paintLegend]);
 
   // Appearance is applied in its own effect so changing a colour never rebuilds
   // the chart — and never resets the viewport the user has scrolled to.
@@ -372,7 +429,8 @@ export function Chart({
       wickUpColor: theme.upWick,
       wickDownColor: theme.downWick,
     });
-  }, [theme]);
+    paintLegend();
+  }, [theme, paintLegend]);
 
   // ---- data ---------------------------------------------------------------
   useEffect(() => {
@@ -427,7 +485,8 @@ export function Chart({
     }
 
     sync(null);
-  }, [candles, timeframe, sync]);
+    paintLegend();
+  }, [candles, timeframe, sync, paintLegend]);
 
   useEffect(() => {
     sync(gestureRef.current.mode === "creating" ? gestureRef.current.draft : null);
@@ -843,6 +902,10 @@ export function Chart({
         ref={overlayRef}
         className="absolute inset-0 z-10"
         style={{ pointerEvents: "none" }}
+      />
+      <div
+        ref={legendRef}
+        className="pointer-events-none absolute left-3 top-2 z-20 flex flex-wrap gap-x-2.5 font-mono text-xs tabular-nums"
       />
     </div>
   );
