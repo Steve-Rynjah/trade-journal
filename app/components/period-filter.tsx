@@ -12,7 +12,7 @@ import {
 import { useTrades, usePeriod, useSheet } from "./shell/app-data";
 import { SelectMenu, type MenuOption } from "./select-menu";
 
-const CALENDAR_ICON = (
+export const CALENDAR_ICON = (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <rect x="3.5" y="5" width="17" height="15.5" rx="3" stroke="currentColor" strokeWidth="1.6" />
     <path
@@ -25,7 +25,7 @@ const CALENDAR_ICON = (
 );
 
 /** Stacked sheets — the same month, layered. */
-const SHEET_ICON = (
+export const SHEET_ICON = (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path
       d="M12 3.2l8.4 4.2-8.4 4.2-8.4-4.2L12 3.2z"

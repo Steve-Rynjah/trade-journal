@@ -26,7 +26,7 @@ export function LongShortCard({
   accountSize,
   riskPercent,
 }: {
-  trades: Trade[];
+  trades: Pick<Trade, "direction" | "result" | "ratio">[];
   accountSize: number;
   riskPercent: number;
 }) {

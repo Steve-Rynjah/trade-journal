@@ -22,7 +22,10 @@ export type ResultSplit = {
   winRate: number;
 };
 
-export function splitResults(trades: Trade[]): ResultSplit {
+/** Anything with a result — a backtest trade or a journal entry. */
+type Scored = Pick<Trade, "result" | "direction" | "ratio">;
+
+export function splitResults(trades: Pick<Trade, "result">[]): ResultSplit {
   const wins = trades.filter((trade) => trade.result === "WIN").length;
   const losses = trades.filter((trade) => trade.result === "LOSE").length;
   const decided = wins + losses;
@@ -37,7 +40,7 @@ export function splitResults(trades: Trade[]): ResultSplit {
 }
 
 /** How the LONG (or SHORT) trades on their own performed. */
-export function splitByDirection(trades: Trade[], direction: Direction): ResultSplit {
+export function splitByDirection(trades: Scored[], direction: Direction): ResultSplit {
   return splitResults(trades.filter((trade) => trade.direction === direction));
 }
 
@@ -276,7 +279,7 @@ export type Pnl = {
  * even moves nothing.
  */
 export function computePnl(
-  trades: Trade[],
+  trades: Pick<Trade, "result" | "ratio">[],
   accountSize: number,
   riskPercent: number = DEFAULT_RISK_PERCENT,
 ): Pnl {
@@ -374,10 +377,16 @@ export function computeDrawdown(net: number, accountSize: number): Drawdown {
   };
 }
 
-/** `1 : 2.5` → `2.5`. Falls back to 1 so a malformed ratio never yields NaN. */
+/**
+ * What a win pays in R: `1 : 2.5` → `2.5`, `2 : 3` → `1.5`. The risk leg is
+ * normalised to one unit, since a loss always costs exactly one risk. Falls back
+ * to 1 so a malformed ratio never yields NaN.
+ */
 export function rewardLegOf(ratio: string): number {
-  const reward = Number(ratio.split(":")[1]?.trim());
-  return Number.isFinite(reward) && reward > 0 ? reward : 1;
+  const [left, right] = ratio.split(":").map((part) => Number(part.trim()));
+  const risk = Number.isFinite(left) && left > 0 ? left : 1;
+  const reward = Number.isFinite(right) && right > 0 ? right : 1;
+  return reward / risk;
 }
 
 export function formatMoney(amount: number): string {

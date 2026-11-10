@@ -91,6 +91,23 @@ const NAV = [
       </>
     ),
   },
+  {
+    href: "/journal",
+    label: "Journal",
+    hint: "Trades actually taken",
+    icon: (
+      <>
+        <path
+          d="M6.4 3.2h10.4a2.2 2.2 0 012.2 2.2v13.2a2.2 2.2 0 01-2.2 2.2H6.4a1.4 1.4 0 01-1.4-1.4V4.6a1.4 1.4 0 011.4-1.4zM8.8 7.6h6.4M8.8 11.2h4.4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </>
+    ),
+  },
 ] as const;
 
 export function AppShell({

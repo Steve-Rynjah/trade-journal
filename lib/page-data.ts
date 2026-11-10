@@ -59,7 +59,7 @@ export async function loadTrades(): Promise<LoadResult> {
         message,
         steps: [
           "Open the SQL Editor for this project",
-          "Run the files in supabase/migrations in order, 0001 through 0004",
+          "Run the files in supabase/migrations in order, 0001 through 0013",
           "Reload this page",
         ],
         action: editor ? { href: editor, label: "Open the SQL Editor" } : undefined,

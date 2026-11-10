@@ -37,6 +37,7 @@ import {
   fieldNeutral,
 } from "../ui";
 import { ScreenshotLightbox, type Lightbox } from "../screenshot-lightbox";
+import { RowMenu } from "../row-menu";
 
 /** The fields a row holds, as strings — exactly what the inputs produce. */
 export type Draft = {
@@ -62,7 +63,7 @@ const TD = "px-4 py-3 align-top text-theme-sm";
 const TH_TIGHT = TH.replace("px-4", "px-3");
 const TD_TIGHT = TD.replace("px-4", "px-3");
 
-function SelectCell<T extends string>({
+export function SelectCell<T extends string>({
   label,
   value,
   options,
@@ -341,7 +342,7 @@ function SetupPicker({
 }
 
 /** A small square preview of a chart. */
-function Thumb({ url, label, onClick }: { url: string; label: string; onClick: () => void }) {
+export function Thumb({ url, label, onClick }: { url: string; label: string; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -355,9 +356,9 @@ function Thumb({ url, label, onClick }: { url: string; label: string; onClick: (
   );
 }
 
-const biasTone = (option: Bias) => (option === "BULLISH" ? fieldGood : fieldBad);
-const directionTone = (option: Direction) => (option === "LONG" ? fieldGood : fieldBad);
-const resultTone = (option: TradeResult) =>
+export const biasTone = (option: Bias) => (option === "BULLISH" ? fieldGood : fieldBad);
+export const directionTone = (option: Direction) => (option === "LONG" ? fieldGood : fieldBad);
+export const resultTone = (option: TradeResult) =>
   option === "WIN" ? fieldGood : option === "LOSE" ? fieldBad : fieldMuted;
 
 /** The input cells, shared by the new-trade row and any row being edited. */
@@ -372,6 +373,7 @@ function DraftCells({
   onOpenExisting,
   onRemoveExisting,
   removing,
+  trailing,
 }: {
   draft: Draft;
   onChange: (next: Draft) => void;
@@ -387,6 +389,8 @@ function DraftCells({
   onRemoveExisting?: (path: string) => void;
   /** The chart currently being taken off, so its button can say so. */
   removing?: string | null;
+  /** Row controls, in the Chart cell's right corner — Clear, or Save/Cancel. */
+  trailing?: ReactNode;
 }) {
   // An untouched row already reads as a date in this month, so "fill it in and
   // save" cannot quietly file the trade under a month you were not looking at.
@@ -457,7 +461,9 @@ function DraftCells({
           onSubmit={onSubmit}
         />
       </td>
-      <td className={`${TD} cell-rule`}>
+      <td className={TD}>
+        <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
         {draft.result ? (
           <span className="flex flex-col gap-1.5">
             {existing.length > 0 ? (
@@ -511,6 +517,9 @@ function DraftCells({
         ) : (
           <span className="text-gray-300 dark:text-gray-600">—</span>
         )}
+        </div>
+        {trailing}
+        </div>
       </td>
     </>
   );
@@ -547,7 +556,6 @@ export function TradeSheet({
   const bounds = monthBounds(month, year);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Draft | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<Lightbox>(null);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -601,7 +609,6 @@ export function TradeSheet({
     const result = await deleteTrade(id);
     setBusy(false);
     if (result.status === "error") onError(result.message);
-    setConfirming(null);
   }
 
   async function attachToRow(files: File[]) {
@@ -658,12 +665,11 @@ export function TradeSheet({
           <colgroup>
             <col className="w-[10rem]" />
             <col className="w-[6.75rem]" />
-            <col className="w-[6.75rem]" />
+            <col className="w-[8.5rem]" />
             <col className="w-[24rem]" />
             <col className="w-[6.75rem]" />
             <col className="min-w-[15rem]" />
-            <col className="w-[10rem]" />
-            <col className="w-[5rem]" />
+            <col className="w-[13rem]" />
           </colgroup>
 
           <thead>
@@ -674,10 +680,7 @@ export function TradeSheet({
               <th className={`${TH} cell-rule`}>Setup</th>
               <th className={`${TH_TIGHT} cell-rule`}>Results</th>
               <th className={`${TH} cell-rule`}>Remarks</th>
-              <th className={`${TH} cell-rule`}>Chart</th>
-              <th className={`${TH} text-right`}>
-                <span className="sr-only">Actions</span>
-              </th>
+              <th className={TH}>Chart</th>
             </tr>
           </thead>
 
@@ -692,18 +695,22 @@ export function TradeSheet({
                 onPickFile={() => draftFileRef.current?.click()}
                 fallbackDate={fallbackDate}
                 bounds={bounds}
+                trailing={
+                  draft.screenshots.length > 0 ? (
+                    <IconButton
+                      label="Clear the picked images"
+                      onClick={() => onDraftChange({ ...draft, screenshots: [] })}
+                    >
+                      <path
+                        d="M6 6l12 12M18 6L6 18"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                    </IconButton>
+                  ) : null
+                }
               />
-              <td className={`${TD} text-right`}>
-                {draft.screenshots.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => onDraftChange({ ...draft, screenshots: [] })}
-                    className="text-theme-xs text-gray-500 hover:text-error-500"
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </td>
             </tr>
 
             {trades.map((trade) => {
@@ -727,9 +734,8 @@ export function TradeSheet({
                       onOpenExisting={(index) => openCharts(trade, index)}
                       onRemoveExisting={(path) => void detach(trade.id, path)}
                       removing={removing}
-                    />
-                    <td className={`${TD} text-right`}>
-                      <span className="flex items-center justify-end gap-1">
+                      trailing={
+                        <span className="flex flex-col gap-1">
                         <IconButton
                           label="Save this row"
                           tone="brand"
@@ -759,7 +765,8 @@ export function TradeSheet({
                           />
                         </IconButton>
                       </span>
-                    </td>
+                      }
+                    />
                   </tr>
                 );
               }
@@ -803,8 +810,9 @@ export function TradeSheet({
                     )}
                   </td>
 
-                  <td className={`${TD} cell-rule`}>
-                    <span className="flex flex-wrap items-center gap-1.5">
+                  <td className={TD}>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="flex flex-wrap items-center gap-1.5">
                       {trade.screenshots.map((shot, index) => (
                         <Thumb
                           key={shot.path}
@@ -832,61 +840,17 @@ export function TradeSheet({
                         </button>
                       ) : null}
                     </span>
-                  </td>
-
-                  <td className={`${TD} text-right`}>
-                    <span className="flex items-center justify-end gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                      {confirming === trade.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => removeTrade(trade.id)}
-                            disabled={working}
-                            className="rounded-md bg-error-50 px-2 py-1 text-theme-xs font-medium text-error-600 hover:bg-error-100 disabled:opacity-50 dark:bg-error-500/15 dark:text-error-400"
-                          >
-                            Delete
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirming(null)}
-                            className="px-1 text-theme-xs text-gray-500 hover:text-gray-700"
-                          >
-                            No
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <IconButton
-                            label={`Edit the trade on ${formatTradeDate(trade.tradeDate)}`}
-                            onClick={() => {
-                              setEditingId(trade.id);
-                              setEditDraft(draftOf(trade));
-                              onError(null);
-                            }}
-                          >
-                            <path
-                              d="M16.5 4.5l3 3L8 19l-4.5 1.5L5 16 16.5 4.5z"
-                              stroke="currentColor"
-                              strokeWidth="1.7"
-                              strokeLinejoin="round"
-                            />
-                          </IconButton>
-                          <IconButton
-                            label={`Delete the trade on ${formatTradeDate(trade.tradeDate)}`}
-                            tone="error"
-                            onClick={() => setConfirming(trade.id)}
-                          >
-                            <path
-                              d="M4 6.5h16M9.5 6.5v-2h5v2M6.5 6.5l1 13h9l1-13"
-                              stroke="currentColor"
-                              strokeWidth="1.7"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </IconButton>
-                        </>
-                      )}
-                    </span>
+                      <RowMenu
+                        label={`the trade on ${formatTradeDate(trade.tradeDate)}`}
+                        disabled={working}
+                        onEdit={() => {
+                          setEditingId(trade.id);
+                          setEditDraft(draftOf(trade));
+                          onError(null);
+                        }}
+                        onDelete={() => removeTrade(trade.id)}
+                      />
+                    </div>
                   </td>
                 </tr>
               );
@@ -943,7 +907,7 @@ export function TradeSheet({
   );
 }
 
-function IconButton({
+export function IconButton({
   label,
   onClick,
   children,
