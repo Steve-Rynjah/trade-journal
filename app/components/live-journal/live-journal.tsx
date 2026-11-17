@@ -19,12 +19,9 @@ import {
 } from "@/app/journal-actions";
 import {
   MAX_JOURNAL_CHARTS,
-  NO_TP,
-  levelsProblem,
-  parsePrice,
-  sanitisePrice,
-  sanitiseTakeProfit,
+  NEWS_OPTIONS,
   type JournalEntryWithCharts,
+  type News,
 } from "@/lib/journal";
 import {
   ACCOUNT_SIZES,
@@ -88,10 +85,8 @@ type Draft = {
   tradeDate: string;
   bias: Bias | "";
   direction: Direction | "";
-  entry: string;
-  stopLoss: string;
-  /** A price, or `-` for a trade taken without a target. */
-  takeProfit: string;
+  /** Was there high-impact news around the trade. */
+  news: News | "";
   /** The RR legs, `1` and `2` for `1 : 2`. Both are the journal's to set. */
   riskLeg: string;
   rewardLeg: string;
@@ -106,9 +101,7 @@ function blankDraft(): Draft {
     tradeDate: "",
     bias: "",
     direction: "",
-    entry: "",
-    stopLoss: "",
-    takeProfit: "",
+    news: "",
     riskLeg: "1",
     rewardLeg: "2",
     result: "",
@@ -122,10 +115,7 @@ function draftOf(entry: JournalEntryWithCharts): Draft {
     tradeDate: entry.tradeDate,
     bias: entry.bias,
     direction: entry.direction,
-    entry: entry.entry,
-    stopLoss: entry.stopLoss,
-    takeProfit:
-      entry.takeProfit === null ? NO_TP : entry.takeProfit,
+    news: entry.news,
     riskLeg: parseRatio(entry.ratio).risk,
     rewardLeg: parseRatio(entry.ratio).reward,
     result: entry.result,
@@ -144,15 +134,7 @@ function blockedReason(draft: Draft, date: string): string | null {
   if (!isWeekday(date)) return "Forex week runs Monday to Friday.";
   if (!draft.bias) return "Choose a bias.";
   if (!draft.direction) return "Choose a direction.";
-  const entry = parsePrice(draft.entry);
-  const sl = parsePrice(draft.stopLoss);
-  const noTarget = draft.takeProfit === NO_TP;
-  const tp = noTarget ? null : parsePrice(draft.takeProfit);
-  if (entry === null) return "Enter the entry price.";
-  if (sl === null) return "Enter the SL.";
-  if (tp === null && !noTarget) return "Enter the TP, or - if there was none.";
-  const levels = levelsProblem(draft.direction, entry, sl, tp);
-  if (levels) return levels;
+  if (!draft.news) return "Choose YES or NO for News.";
   if (!ratioOf(draft)) return "Enter both legs of the RR.";
   if (!draft.result) return "Choose a result.";
   return null;
@@ -170,9 +152,7 @@ function toFormData(
   data.set("version", String(version));
   data.set("bias", draft.bias);
   data.set("direction", draft.direction);
-  data.set("entry", draft.entry);
-  data.set("stop_loss", draft.stopLoss);
-  data.set("take_profit", draft.takeProfit);
+  data.set("news", draft.news);
   data.set("ratio", ratioOf(draft));
   data.set("result", draft.result);
   data.set("journal", draft.journal);
@@ -241,9 +221,7 @@ export function LiveJournal({
   const touched =
     draft.bias ||
     draft.direction ||
-    draft.entry ||
-    draft.stopLoss ||
-    draft.takeProfit ||
+    draft.news ||
     draft.result;
 
   const split = splitResults(rows);
@@ -616,14 +594,12 @@ export function LiveJournal({
 
       <Card>
         <div className="overflow-x-auto rounded-t-2xl">
-          <table className="w-full min-w-[86rem] border-collapse">
+          <table className="w-full min-w-[78rem] border-collapse">
             <colgroup>
               <col className="w-[10rem]" />
               <col className="w-[6.75rem]" />
               <col className="w-[8.5rem]" />
-              <col className="w-[7.5rem]" />
-              <col className="w-[7.5rem]" />
-              <col className="w-[7.5rem]" />
+              <col className="w-[6.75rem]" />
               <col className="w-[7.5rem]" />
               <col className="w-[6.75rem]" />
               <col className="min-w-[18rem]" />
@@ -635,9 +611,7 @@ export function LiveJournal({
                   "Date",
                   "Bias",
                   "Direction",
-                  "Entry",
-                  "SL",
-                  "TP",
+                  "News",
                   "RR",
                   "Result",
                   "Journal",
@@ -759,24 +733,8 @@ export function LiveJournal({
                     <td className={`${TD} cell-rule`}>
                       <DirectionBadge direction={entry.direction} />
                     </td>
-                    <td
-                      className={`${TD} cell-rule tnum text-gray-700 dark:text-gray-300`}
-                    >
-                      {entry.entry}
-                    </td>
-                    <td
-                      className={`${TD} cell-rule tnum text-error-600 dark:text-error-400`}
-                    >
-                      {entry.stopLoss}
-                    </td>
-                    <td
-                      className={`${TD} cell-rule tnum text-success-600 dark:text-success-500`}
-                    >
-                      {entry.takeProfit === null ? (
-                        <span className="text-gray-400">-</span>
-                      ) : (
-                        entry.takeProfit
-                      )}
+                    <td className={`${TD} cell-rule`}>
+                      <NewsBadge news={entry.news} />
                     </td>
                     <td
                       className={`${TD} cell-rule tnum whitespace-nowrap font-medium text-gray-700 dark:text-gray-300`}
@@ -911,40 +869,18 @@ export function LiveJournal({
   );
 }
 
-function PriceCell({
-  label,
-  value,
-  onChange,
-  onSubmit,
-  sanitise = sanitisePrice,
-  placeholder = "0.00000",
-  title,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  onSubmit: () => void;
-  sanitise?: (value: string) => string;
-  placeholder?: string;
-  title?: string;
-}) {
+const NEWS_BADGE: Record<News, string> = {
+  YES: "bg-warning-50 text-warning-700 dark:bg-warning-500/15 dark:text-orange-400",
+  NO: "bg-gray-100 text-gray-600 dark:bg-white/[0.08] dark:text-gray-300",
+};
+
+function NewsBadge({ news }: { news: News }) {
   return (
-    <input
-      type="text"
-      inputMode="decimal"
-      aria-label={label}
-      title={title}
-      placeholder={placeholder}
-      value={value}
-      onChange={(event) => onChange(sanitise(event.target.value))}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          onSubmit();
-        }
-      }}
-      className={`${fieldClass} tnum h-9`}
-    />
+    <span
+      className={`inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-theme-xs font-medium ${NEWS_BADGE[news]}`}
+    >
+      {news}
+    </span>
   );
 }
 
@@ -1068,30 +1004,11 @@ function DraftCells({
         />
       </td>
       <td className={`${TD} cell-rule`}>
-        <PriceCell
-          label="Entry"
-          value={draft.entry}
-          onChange={(entry) => onChange({ ...draft, entry })}
-          onSubmit={onSubmit}
-        />
-      </td>
-      <td className={`${TD} cell-rule`}>
-        <PriceCell
-          label="Stop loss"
-          value={draft.stopLoss}
-          onChange={(stopLoss) => onChange({ ...draft, stopLoss })}
-          onSubmit={onSubmit}
-        />
-      </td>
-      <td className={`${TD} cell-rule`}>
-        <PriceCell
-          label="Take profit"
-          value={draft.takeProfit}
-          onChange={(takeProfit) => onChange({ ...draft, takeProfit })}
-          onSubmit={onSubmit}
-          sanitise={sanitiseTakeProfit}
-          placeholder="0.00000 or -"
-          title="A price, or - if the trade had no target"
+        <SelectCell
+          label="News"
+          value={draft.news}
+          options={NEWS_OPTIONS}
+          onChange={(news) => onChange({ ...draft, news })}
         />
       </td>
       <td className={`${TD} cell-rule`}>

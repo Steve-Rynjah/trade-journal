@@ -4,13 +4,8 @@ import { createClient } from "./supabase/server";
 import { SCREENSHOT_BUCKET, SIGNED_URL_TTL_SECONDS } from "./supabase/config";
 import { rowToEntry, type JournalEntryWithCharts, type JournalRow } from "./journal";
 
-/**
- * Every column, plus the three prices again as text. Read as numbers they come
- * back through JSON, which drops trailing zeros; as text they keep every digit
- * the column stored.
- */
 const JOURNAL_SELECT =
-  "*, entry_text:entry_price::text, stop_loss_text:stop_loss::text, take_profit_text:take_profit::text";
+  "id, trade_date, version, bias, direction, news, ratio, result, journal, screenshot_paths, created_at";
 
 export type JournalLoad =
   | { ok: true; entries: JournalEntryWithCharts[] }

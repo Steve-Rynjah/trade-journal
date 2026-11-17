@@ -7,10 +7,8 @@ import type { FormState } from "@/lib/form-state";
 import {
   MAX_JOURNAL_CHARTS,
   MAX_JOURNAL_LENGTH,
-  NO_TP,
-  levelsProblem,
-  normalisePrice,
-  parsePrice,
+  NEWS_OPTIONS,
+  type News,
 } from "@/lib/journal";
 import { createClient } from "@/lib/supabase/server";
 import { SCREENSHOT_BUCKET } from "@/lib/supabase/config";
@@ -43,11 +41,7 @@ type ParsedEntry = {
   version: number;
   bias: Bias;
   direction: Direction;
-  // Sent as strings so `1.12450` reaches the column with its last zero —
-  // a JSON number would drop it before Postgres ever saw it.
-  entry_price: string;
-  stop_loss: string;
-  take_profit: string | null;
+  news: News;
   ratio: string;
   result: TradeResult;
   journal: string | null;
@@ -65,13 +59,7 @@ function parseEntry(formData: FormData): {
   const direction = String(formData.get("direction") ?? "");
   const result = String(formData.get("result") ?? "");
   const journal = String(formData.get("journal") ?? "").trim();
-  const entryRaw = String(formData.get("entry") ?? "");
-  const stopLossRaw = String(formData.get("stop_loss") ?? "");
-  const entry = parsePrice(entryRaw);
-  const stopLoss = parsePrice(stopLossRaw);
-  const tpRaw = String(formData.get("take_profit") ?? "").trim();
-  const noTarget = tpRaw === NO_TP;
-  const takeProfit = noTarget ? null : parsePrice(tpRaw);
+  const news = String(formData.get("news") ?? "");
   const ratio = String(formData.get("ratio") ?? "").trim();
 
   if (!isValidDate(tradeDate)) fieldErrors.trade_date = "Pick a date.";
@@ -84,16 +72,11 @@ function parseEntry(formData: FormData): {
   if (!DIRECTIONS.includes(direction as Direction)) fieldErrors.direction = "Choose a direction.";
   if (!RESULTS.includes(result as TradeResult)) fieldErrors.result = "Choose a result.";
 
-  if (entry === null) fieldErrors.entry = "Enter the entry price.";
-  if (stopLoss === null) fieldErrors.stop_loss = "Enter the SL.";
-  if (takeProfit === null && !noTarget) fieldErrors.take_profit = "Enter the TP, or - for none.";
+  if (!NEWS_OPTIONS.includes(news as News)) fieldErrors.news = "Choose YES or NO for News.";
 
   if (!/^\d+(\.\d+)? : \d+(\.\d+)?$/.test(ratio) || ratio.length > MAX_RATIO_LENGTH) {
     fieldErrors.ratio = "Enter both legs of the RR.";
   }
-
-  const levels = levelsProblem(direction as Direction, entry, stopLoss, takeProfit);
-  if (levels) fieldErrors.levels = levels;
 
   if (journal.length > MAX_JOURNAL_LENGTH) {
     fieldErrors.journal = `Keep the journal under ${MAX_JOURNAL_LENGTH} characters.`;
@@ -107,9 +90,7 @@ function parseEntry(formData: FormData): {
       version,
       bias: bias as Bias,
       direction: direction as Direction,
-      entry_price: normalisePrice(entryRaw),
-      stop_loss: normalisePrice(stopLossRaw),
-      take_profit: noTarget ? null : normalisePrice(tpRaw),
+      news: news as News,
       ratio,
       result: result as TradeResult,
       journal: journal === "" ? null : journal,

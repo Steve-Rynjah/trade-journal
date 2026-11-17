@@ -21,14 +21,8 @@ export type JournalEntry = {
   version: number;
   bias: Bias;
   direction: Direction;
-  /**
-   * Prices exactly as typed — `1.12450` keeps its last zero. Text, not number:
-   * a JS number cannot remember how many decimals it was written with.
-   */
-  entry: string;
-  stopLoss: string;
-  /** Null when the trade was taken without a target — shown as `-`. */
-  takeProfit: string | null;
+  /** Was there high-impact news around the trade. */
+  news: News;
   /** The planned R:R as typed, `1 : 2`. Both legs are the journal's own. */
   ratio: string;
   result: TradeResult;
@@ -45,11 +39,7 @@ export type JournalRow = {
   version: number | null;
   bias: Bias;
   direction: Direction;
-  // Selected as `::text` aliases — see JOURNAL_SELECT in journal-data.ts. The
-  // raw numeric columns arrive as JSON numbers, which lose trailing zeros.
-  entry_text: string;
-  stop_loss_text: string;
-  take_profit_text: string | null;
+  news: News | null;
   ratio: string;
   result: TradeResult;
   journal: string | null;
@@ -64,9 +54,7 @@ export function rowToEntry(row: JournalRow): JournalEntry {
     version: row.version ?? 1,
     bias: row.bias,
     direction: row.direction,
-    entry: row.entry_text,
-    stopLoss: row.stop_loss_text,
-    takeProfit: row.take_profit_text,
+    news: row.news ?? "NO",
     ratio: row.ratio,
     result: row.result,
     journal: row.journal,
@@ -75,61 +63,6 @@ export function rowToEntry(row: JournalRow): JournalEntry {
   };
 }
 
-/* ---------------------------------------------------------------------------
-   Prices
-   --------------------------------------------------------------------------- */
-
-/** Digits and at most one decimal point — what a price can contain. */
-export function sanitisePrice(value: string): string {
-  const cleaned = value.replace(/,/g, ".").replace(/[^\d.]/g, "");
-  const [whole, ...rest] = cleaned.split(".");
-  return rest.length === 0 ? whole : `${whole}.${rest.join("")}`;
-}
-
-/** What the TP cell holds when the trade had no target. */
-export const NO_TP = "-";
-
-/** A price, or the lone `-` that means "no take profit". */
-export function sanitiseTakeProfit(value: string): string {
-  return value.includes(NO_TP) ? NO_TP : sanitisePrice(value);
-}
-
-/** A positive finite number, or null for anything blank or half-typed. */
-export function parsePrice(value: string): number | null {
-  if (value.trim() === "" || value.trim() === ".") return null;
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? number : null;
-}
-
-/**
- * Why a set of levels cannot be a trade, or null when it can.
- *
- * A long risks below the entry and aims above it; a short is the mirror. The
- * database holds the same rule, so this is about saying it before Save.
- */
-export function levelsProblem(
-  direction: Direction | "",
-  entry: number | null,
-  stopLoss: number | null,
-  takeProfit: number | null,
-): string | null {
-  if (entry === null || stopLoss === null || direction === "") return null;
-  // No target is a valid trade; only a target on the wrong side is a typo.
-  if (direction === "LONG") {
-    if (stopLoss >= entry) return "On a long, the SL sits below the entry.";
-    if (takeProfit !== null && takeProfit <= entry) return "On a long, the TP sits above the entry.";
-  } else {
-    if (stopLoss <= entry) return "On a short, the SL sits above the entry.";
-    if (takeProfit !== null && takeProfit >= entry) return "On a short, the TP sits below the entry.";
-  }
-  return null;
-}
-
-/**
- * A typed price, tidied for storage without touching its digits: `.5` → `0.5`,
- * `1.12450` stays `1.12450`. Assumes it already passed `parsePrice`.
- */
-export function normalisePrice(value: string): string {
-  const trimmed = value.trim().replace(/\.$/, "");
-  return trimmed.startsWith(".") ? `0${trimmed}` : trimmed;
-}
+/** The News column: was there high-impact news around the trade. */
+export const NEWS_OPTIONS = ["YES", "NO"] as const;
+export type News = (typeof NEWS_OPTIONS)[number];
